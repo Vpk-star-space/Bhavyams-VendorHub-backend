@@ -11,17 +11,12 @@ dotenv.config();
 
 const app = express();
 
-// 🛡️ DEPLOYMENT FIX: Allow both Localhost and your future Live Frontend
-const allowedOrigins = [
-    'http://localhost:3000', 
-    'https://bhavyams-hub.vercel.app' // You can update this once you have your Vercel link
-];
-
-// 🛡️ SIMPLE CORS: This allows your local testing AND any future live website
 app.use(cors({
-    origin: '*', // The '*' means 'Accept any website for now' (Easiest for first-time deployment)
-    credentials: true
+    origin: '*', // This allows all websites to talk to your backend
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
