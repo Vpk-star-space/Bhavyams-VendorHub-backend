@@ -2,10 +2,20 @@ const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // Must be false for 587
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-    }
+    },
+    // 🔐 ADD THIS SECTION FOR RENDER:
+    tls: {
+        rejectUnauthorized: false // This stops the "Self-signed certificate" error
+    },
+    connectionTimeout: 10000, // Wait 10 seconds for Render to connect
+    greetingTimeout: 5000,
+    socketTimeout: 10000
 });
 
 // 🎨 REUSABLE LOGO HEADER FOR ALL EMAILS
