@@ -388,4 +388,28 @@ router.delete('/admin/delete-product/:id', protect, adminOnly, async (req, res) 
     }
 });
 
+// ================== ADMIN: GET ALL PAYMENTS ==================
+router.get('/admin/all-payments', protect, adminOnly, async (req, res) => {
+    try {
+        // This query gets payment details and joins with user names so the admin knows who paid
+        const payments = await pool.query(`
+            SELECT 
+                p.id, 
+                p.payment_id, 
+                p.amount, 
+                p.status, 
+                p.created_at, 
+                u.username as customer_name
+            FROM payments p
+            LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.created_at DESC
+        `);
+
+        res.json(payments.rows);
+    } catch (err) {
+        console.error("Admin Payments Fetch Error:", err.message);
+        res.status(500).json({ message: "Server Error fetching transaction logs" });
+    }
+});
+
 module.exports = router;
