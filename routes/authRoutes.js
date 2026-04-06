@@ -278,12 +278,14 @@ router.delete('/delete-user/:id', protect, async (req, res) => {
     }
 });
 
-// ================== 8. FORGOT PASSWORD ==================
 router.post('/forgot-password', async (req, res) => {
     try {
         const { email } = req.body;
 
-        const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        const user = await pool.query(
+            'SELECT * FROM users WHERE email = $1',
+            [email]
+        );
 
         if (user.rows.length === 0) {
             return res.status(404).json({ message: "User not found" });
@@ -297,16 +299,21 @@ router.post('/forgot-password', async (req, res) => {
             [otp, expiry, email]
         );
 
-        await sendOTPEmail(email, otp);
+        // ✅ FIX: Prevent crash if email fails
+        try {
+            await sendOTPEmail(email, otp);
+        } catch (emailErr) {
+            console.error("Email Error:", emailErr);
+            console.log("OTP (fallback):", otp); // 🔥 VERY IMPORTANT FOR DEBUG
+        }
 
         res.json({ message: "Reset code sent!" });
 
     } catch (err) {
-        console.error(err);
+        console.error("Forgot Password Error:", err);
         res.status(500).json({ message: "Server Error" });
     }
 });
-
 // ================== 9. RESET PASSWORD ==================
 router.post('/reset-password', async (req, res) => {
     try {
