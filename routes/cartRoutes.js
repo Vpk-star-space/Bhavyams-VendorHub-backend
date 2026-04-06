@@ -1,7 +1,7 @@
 const express = require('express'); // 1. Import Express
 const router = express.Router();    // 2. Create the Router instance
 const pool = require('../db');      // 3. Import your DB connection
-const { protect } = require('../middleware/authmiddleware'); // 4. Import Auth Middleware
+const { protect } = require('../middleware/authMiddleware'); // 4. Import Auth Middleware
 
 // --- NOW your existing code will work ---
 router.post('/add', protect, async (req, res) => {
