@@ -339,4 +339,12 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
+// ================== 10. GOOGLE CLIENT ID ==================
+router.get('/google-client-id', (req, res) => {
+    if (!process.env.GOOGLE_CLIENT_ID) {
+        return res.status(500).json({ message: "Google Client ID not set" });
+    }
+
+    res.json({ clientId: process.env.GOOGLE_CLIENT_ID });
+});
 module.exports = router;
