@@ -120,7 +120,7 @@ router.post('/send-otp', async (req, res) => {
 // ================== 4. REGISTER ==================
 router.post('/register-with-otp', async (req, res) => {
     try {
-        const { username, email, password, otp } = req.body;
+        const { username, email, password, role, otp } = req.body;
 
         if (!username || !email || !password || !otp) {
             return res.status(400).json({ message: "All fields required" });
@@ -150,7 +150,7 @@ router.post('/register-with-otp', async (req, res) => {
             (username, email, password_hash, role, is_verified)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id, username, email, role`,
-            [username, email, hashedPassword, 'customer', true]
+            [username, email, hashedPassword, role ||'customer', true]
         );
 
         await pool.query('DELETE FROM otp_codes WHERE email = $1', [email]);
