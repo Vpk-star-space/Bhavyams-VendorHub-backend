@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // 🌐 Dynamically get the Frontend URL (Falls back to your current Vercel link)
-const frontendUrl = process.env.FRONTEND_URL || 'https://bhavyams-vendor-hub-frontend-vpk-star-spaces-projects.vercel.app';
+const frontendUrl = process.env.FRONTEND_URL || 'https://bhavyams-vendor-hub-vpk.vercel.app';
 
 // 🎨 REUSABLE LOGO HEADER
 const emailHeader = `
