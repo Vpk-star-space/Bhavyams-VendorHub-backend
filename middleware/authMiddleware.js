@@ -31,19 +31,18 @@ const protect = async (req, res, next) => { // 🛡️ Added 'async'
     }
 };
 
-// 👮 The Role Supervisor
+// 👮 The Role Supervisor (Great for multiple roles)
 const authorize = (...roles) => {
     return (req, res, next) => {
-        // req.user was created by the 'protect' middleware
-        if (!roles.includes(req.user.role)) {
+        // Ensure roles are compared in lowercase to avoid "Vendor" vs "vendor" bugs
+        if (!req.user || !roles.map(r => r.toLowerCase()).includes(req.user.role.toLowerCase())) {
             return res.status(403).json({ 
-                message: `Forbidden: Your role (${req.user.role}) does not have permission.` 
+                message: `Forbidden: Your role (${req.user?.role}) does not have permission.` 
             });
         }
         next();
     };
 };
-
 
 
 
@@ -59,7 +58,7 @@ const adminOnly = (req, res, next) => {
 };
 
 // 🛡️ CRITICAL: You must export it here!
-module.exports = { protect, adminOnly };
+module.exports = { protect, adminOnly, authorize };
 
 
 

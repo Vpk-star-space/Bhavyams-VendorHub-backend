@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { upload } = require('../config/cloudinary');
 const pool = require('../db');
-const { protect } = require('../middleware/authMiddleware');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 // 1. 🚀 ADD PRODUCT (With Multiple Images & Gallery Support)
-router.post('/add', protect, upload.array('images', 5), async (req, res) => {
+router.post('/add', protect, authorize('vendor'), upload.array('images', 5), async (req, res) => {
     try {
         const { name, price, description, stock_count, category } = req.body;
         
@@ -217,4 +217,5 @@ router.get('/vendor/stats', protect, async (req, res) => {
         res.status(500).send("Server Error");
     }
 });
+
 module.exports = router;
