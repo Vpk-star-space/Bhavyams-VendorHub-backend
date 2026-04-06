@@ -359,6 +359,33 @@ router.get('/google-client-id', (req, res) => {
 
 });
 
+// ================== ADMIN: GET ALL PRODUCTS ==================
+router.get('/admin/all-products', protect, adminOnly, async (req, res) => {
+    try {
+        // This query joins with the users table to get the Vendor's Name
+        const products = await pool.query(`
+            SELECT p.*, u.username as vendor_name 
+            FROM products p 
+            JOIN users u ON p.vendor_id = u.id 
+            ORDER BY p.id DESC
+        `);
 
+        res.json(products.rows);
+    } catch (err) {
+        console.error("Admin Product Fetch Error:", err.message);
+        res.status(500).json({ message: "Server Error fetching global inventory" });
+    }
+});
+
+// ================== ADMIN: DELETE ANY PRODUCT ==================
+router.delete('/admin/delete-product/:id', protect, adminOnly, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM products WHERE id = $1', [req.params.id]);
+        res.json({ message: "Product removed by Admin" });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ message: "Delete failed" });
+    }
+});
 
 module.exports = router;
