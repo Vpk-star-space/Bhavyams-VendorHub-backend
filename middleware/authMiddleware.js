@@ -49,14 +49,14 @@ const authorize = (...roles) => {
 // ... (your protect function is above this)
 
 const adminOnly = (req, res, next) => {
-    // 🛡️ This checks the 'role' we fetched from the DB in the protect middleware
-    if (req.user && req.user.role && req.user.role.toLowerCase() === 'admin') {
+    console.log("DEBUG: Current User Role from DB is ->", `"${req.user?.role}"`);
+    
+    if (req.user && req.user.role && req.user.role.toLowerCase().trim() === 'admin') {
         next(); 
     } else {
         res.status(403).json({ message: "Access Denied: Admins Only!" });
     }
 };
-
 // 🛡️ CRITICAL: You must export it here!
 module.exports = { protect, adminOnly, authorize };
 

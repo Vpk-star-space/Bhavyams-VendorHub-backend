@@ -246,7 +246,7 @@ router.put('/update-profile', protect, async (req, res) => {
 });
 
 // ================== 7. ADMIN ==================
-router.get('/all-users', protect, async (req, res) => {
+router.get('/all-users', protect,adminOnly, async (req, res) => {
     try {
         if (req.user.role !== 'admin') {
             return res.status(403).json({ message: "Admin only" });
