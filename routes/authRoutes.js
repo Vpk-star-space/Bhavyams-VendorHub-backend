@@ -155,9 +155,11 @@ router.post('/register-with-otp', async (req, res) => {
 
         await pool.query('DELETE FROM otp_codes WHERE email = $1', [email]);
 
-        sendWelcomeEmail(email, username,user.role)
-            .catch(err => console.error(err));
+     // Use newUser.rows[0] or define 'user' first
+const user = newUser.rows[0]; 
 
+sendWelcomeEmail(email, username, user.role)
+    .catch(err => console.error(err));
         res.status(201).json({
             message: "Registration Successful!",
             user: newUser.rows[0]
