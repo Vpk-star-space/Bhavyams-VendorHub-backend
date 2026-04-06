@@ -191,4 +191,30 @@ router.post('/:id/reviews', protect, async (req, res) => {
     }
 });
 
+
+// 🚀 BACKEND CHECK: routes/productRoutes.js
+router.get('/vendor/stats', protect, async (req, res) => {
+    try {
+        // Count products for THIS vendor
+        const productRes = await pool.query(
+            'SELECT COUNT(*) FROM products WHERE vendor_id = $1', 
+            [req.user.id]
+        );
+
+        // Calculate revenue for THIS vendor
+        const revenueRes = await pool.query(
+            'SELECT SUM(total_price) as total FROM orders WHERE vendor_id = $1 AND status = $2', 
+            [req.user.id, 'Delivered']
+        );
+
+        res.json({
+            revenue: revenueRes.rows[0].total || 0,
+            orders: 0, // You can add order count logic here later
+            products: productRes.rows[0].count || 0
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Server Error");
+    }
+});
 module.exports = router;

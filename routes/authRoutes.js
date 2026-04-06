@@ -32,7 +32,7 @@ router.get('/me', protect, async (req, res) => {
 // ================== 2. GOOGLE LOGIN ==================
 router.post('/google-login', async (req, res) => {
     try {
-        const { idToken } = req.body;
+        const { idToken, role } = req.body;
 
         if (!idToken) {
             return res.status(400).json({ message: "Token required" });
@@ -53,7 +53,7 @@ router.post('/google-login', async (req, res) => {
                 `INSERT INTO users 
                 (username, email, google_id, is_google_user, role, is_verified)
                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-                [name, email, sub, true, 'customer', true] // ✅ FIXED ROLE
+                [name, email, sub, true, role ||'customer', true] // ✅ FIXED ROLE
             );
 
             user = newUser.rows[0];
@@ -155,7 +155,7 @@ router.post('/register-with-otp', async (req, res) => {
 
         await pool.query('DELETE FROM otp_codes WHERE email = $1', [email]);
 
-        sendWelcomeEmail(email, username, 'customer')
+        sendWelcomeEmail(email, username,user.role)
             .catch(err => console.error(err));
 
         res.status(201).json({
@@ -358,29 +358,5 @@ router.get('/google-client-id', (req, res) => {
 });
 
 
-// 🚀 BACKEND CHECK: routes/productRoutes.js
-router.get('/vendor/stats', protect, async (req, res) => {
-    try {
-        // Count products for THIS vendor
-        const productRes = await pool.query(
-            'SELECT COUNT(*) FROM products WHERE vendor_id = $1', 
-            [req.user.id]
-        );
 
-        // Calculate revenue for THIS vendor
-        const revenueRes = await pool.query(
-            'SELECT SUM(total_price) as total FROM orders WHERE vendor_id = $1 AND status = $2', 
-            [req.user.id, 'Delivered']
-        );
-
-        res.json({
-            revenue: revenueRes.rows[0].total || 0,
-            orders: 0, // You can add order count logic here later
-            products: productRes.rows[0].count || 0
-        });
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Server Error");
-    }
-});
 module.exports = router;
