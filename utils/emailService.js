@@ -2,18 +2,20 @@ const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465, 
-    secure: true, // true for 465
+    port: 587,
+    secure: false, // Must be false for 587
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     },
     tls: {
-        rejectUnauthorized: false 
+        // This is the most important line for ESOCKET errors
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2' 
     },
-    connectionTimeout: 20000, // Increased to 20 seconds
+    // Force IPv4 (this fixes the '2404:6800' error)
+    family: 4 
 });
-
 // 🎨 REUSABLE LOGO HEADER FOR ALL EMAILS
 const emailHeader = `
     <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #f1f5f9; margin-bottom: 20px;">
