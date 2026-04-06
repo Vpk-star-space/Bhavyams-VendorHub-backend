@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const pool = require('../db'); // 🛡️ Import your DB pool
+const pool = require('../db.js'); // 🛡️ Import your DB pool
 
 const protect = async (req, res, next) => { // 🛡️ Added 'async'
     let token;
