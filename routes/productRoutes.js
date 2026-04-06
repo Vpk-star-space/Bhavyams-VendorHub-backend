@@ -195,12 +195,13 @@ router.post('/:id/reviews', protect, async (req, res) => {
 
 // 🚀 BACKEND CHECK: routes/productRoutes.js
 router.get('/vendor/stats', protect, async (req, res) => {
+    console.log("Stats requested by User ID:", req.user.id); // 👈 Add this
     try {
-        // Count products for THIS vendor
         const productRes = await pool.query(
             'SELECT COUNT(*) FROM products WHERE vendor_id = $1', 
             [req.user.id]
         );
+        // ... rest of code
 
         // Calculate revenue for THIS vendor
         const revenueRes = await pool.query(
