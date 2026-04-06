@@ -3,6 +3,7 @@ const router = express.Router();
 const { upload } = require('../config/cloudinary');
 const pool = require('../db');
 const { protect, authorize } = require('../middleware/authMiddleware');
+const { default: orders } = require('razorpay/dist/types/orders');
 
 // 1. 🚀 ADD PRODUCT (With Multiple Images & Gallery Support)
 router.post('/add', protect, authorize('vendor'), upload.array('images', 5), async (req, res) => {
@@ -209,7 +210,7 @@ router.get('/vendor/stats', protect, async (req, res) => {
 
         res.json({
             revenue: revenueRes.rows[0].total || 0,
-            orders: 0, // You can add order count logic here later
+            orders: orders.rows[0].total || 0,
             products: productRes.rows[0].count || 0
         });
     } catch (err) {
