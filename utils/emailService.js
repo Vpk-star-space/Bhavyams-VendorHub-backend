@@ -1,12 +1,17 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// 🚀 CREATE GMAIL TRANSPORTER
+// 🚀 UPDATED GMAIL TRANSPORTER FOR RENDER
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // 🔒 MUST be false for port 587
     auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS // Use your 16-digit App Password here
+        pass: process.env.EMAIL_PASS
+    },
+    tls: {
+        rejectUnauthorized: false // 🛡️ Helps with connection stability on cloud servers
     }
 });
 
