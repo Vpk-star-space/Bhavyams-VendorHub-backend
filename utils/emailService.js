@@ -155,6 +155,14 @@ const sendWelcomeEmail = async (userEmail, username, role) => {
     return transporter.sendMail(mailOptions);
 };
 
+
+transporter.verify(function (error, success) {
+  if (error) {
+    console.log(" Gmail Transporter Error:", error);
+  } else {
+    console.log("Gmail Server is ready to send messages");
+  }
+});
 module.exports = {
     sendOrderEmail,
     sendDeliveryEmail,

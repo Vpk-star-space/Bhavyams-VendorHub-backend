@@ -44,7 +44,7 @@ router.post('/checkout', protect, async (req, res) => {
     }
 });
 
-// ✅ ROUTE 3: VERIFY PAYMENT
+// ✅ ROUTE 3: VERIFY PAYMENT (Fail-Safe Version)
 router.post('/verify-payment', protect, async (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, cartItems } = req.body;
     const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
@@ -56,16 +56,14 @@ router.post('/verify-payment', protect, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const userRes = await client.query('SELECT email, address FROM users WHERE id = $1', [req.user.id]);
+        const userRes = await client.query('SELECT email, username, address FROM users WHERE id = $1', [req.user.id]);
         const userEmail = userRes.rows[0]?.email;
         const deliveryAddress = userRes.rows[0]?.address || "No Address Found";
 
         for (let item of cartItems) {
-            // 🛡️ SYSTEM FIX 1: Added 'image_url' to the SELECT query for the new emails
             const productRes = await client.query("SELECT vendor_id, delivery_minutes, name, image_url FROM products WHERE id = $1", [item.id]);
             const prod = productRes.rows[0];
             
-            // 🛡️ Get the correct vendor from the product
             const vendorId = prod?.vendor_id || 1; 
             const waitTimeMins = prod?.delivery_minutes || 6;
 
@@ -77,7 +75,6 @@ router.post('/verify-payment', protect, async (req, res) => {
             
             const orderId = orderRes.rows[0].id;
 
-            // 🛡️ SYSTEM FIX 2: Create the payload exactly as your new emailService expects
             const orderPayload = {
                 order_id: orderId,
                 product_name: prod.name,
@@ -85,23 +82,30 @@ router.post('/verify-payment', protect, async (req, res) => {
                 image_url: prod.image_url
             };
 
-            // 📧 Send Order Confirmation Email with Image
-            await sendOrderEmail(userEmail, orderPayload);
+            // 📧 EMAIL FIX: Don't let email failure stop the order!
+            // We remove 'await' or wrap it so it doesn't crash the loop
+            sendOrderEmail(userEmail, orderPayload).catch(err => console.log("Confirmation Email Error:", err.message));
 
             setTimeout(async () => {
                 try {
                     await pool.query("UPDATE orders SET status = 'Delivered' WHERE id = $1", [orderId]);
-                    // 📧 Send Delivery Email with Image
-                    if (sendDeliveryEmail) await sendDeliveryEmail(userEmail, orderPayload);
+                    // 📧 Delivery email in background
+                    sendDeliveryEmail(userEmail, orderPayload).catch(err => console.log("Delivery Email Error:", err.message));
                 } catch (err) { console.error("Timer Error:", err.message); }
             }, waitTimeMins * 60 * 1000);
         }
+
         await client.query('COMMIT');
+        // 🚀 This will now execute immediately!
         res.json({ status: "success" });
+
     } catch (err) {
         await client.query('ROLLBACK');
-        res.status(500).json({ message: err.message });
-    } finally { client.release(); }
+        console.error("Verification Error:", err.message);
+        res.status(500).json({ message: "Order failed but payment was taken. Contact support." });
+    } finally { 
+        client.release(); 
+    }
 });
 // 📈 VENDOR SALES
 router.get('/my-sales', protect, authorize('vendor'), async (req, res) => {
