@@ -104,7 +104,7 @@ router.post('/verify-payment', protect, async (req, res) => {
     } finally { client.release(); }
 });
 // 📈 VENDOR SALES
-router.get('/my-sales', protect, authorize,('vendor'), async (req, res) => {
+router.get('/my-sales', protect, authorize('vendor'), async (req, res) => {
     try {
         const sales = await pool.query(
             `SELECT o.id AS order_id, o.quantity, o.total_price, o.created_at, o.status, 
