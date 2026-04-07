@@ -104,7 +104,7 @@ router.post('/verify-payment', protect, async (req, res) => {
     } finally { client.release(); }
 });
 // 📈 VENDOR SALES
-router.get('/my-sales', protect, authorize,('vendor'),async (req, res) => {
+router.get('/my-sales', protect, authorize,('vendor'), async (req, res) => {
     try {
         const sales = await pool.query(
             `SELECT o.id AS order_id, o.quantity, o.total_price, o.created_at, o.status, 
@@ -177,7 +177,7 @@ router.post('/add-review', protect, async (req, res) => {
 // 🛡️ ADMIN: ALL ORDERS
 router.get('/admin-all', protect,adminOnly, async (req, res) => {
     try {
-        if (req.user.role.toLowerCase() !== 'admin') return res.status(403).json({ message: "Denied" });
+        
         const allOrders = await pool.query(
             `SELECT o.*, p.name as product_name, p.image_url, u.username as customer_name 
              FROM orders o 
