@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 // 📍 Top of orderRoutes.js
-const { protect, authorize, adminOnly } = require('../middleware/authMiddleware');
+const { protect, adminOnly,authorize } = require('../middleware/authMiddleware');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 // 🛡️ IMPORT BOTH EMAIL FUNCTIONS (Required for your mails to work)
