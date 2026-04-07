@@ -264,22 +264,45 @@ router.get('/all-users', protect,adminOnly, async (req, res) => {
     }
 });
 
-router.delete('/delete-user/:id', protect,adminOnly, async (req, res) => {
+// ================== ADMIN: DELETE USER (Safe Cleanup) ==================
+router.delete('/delete-user/:id', protect, adminOnly, async (req, res) => {
+    const { id } = req.params;
+    const client = await pool.connect(); // Use a client for Transaction
+    
     try {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ message: "Admin only" });
+        await client.query('BEGIN'); // Start Transaction
+
+        // 1. Delete user's Cart items
+        await client.query('DELETE FROM cart WHERE user_id = $1', [id]);
+
+        // 2. Delete user's Reviews
+        await client.query('DELETE FROM reviews WHERE user_id = $1', [id]);
+
+        // 3. Delete user's Orders (Both as customer and vendor)
+        await client.query('DELETE FROM orders WHERE user_id = $1 OR vendor_id = $1', [id]);
+
+        // 4. Delete user's Products (If they were a vendor)
+        await client.query('DELETE FROM products WHERE vendor_id = $1', [id]);
+
+        // 5. FINALLY, delete the user themselves
+        const result = await client.query('DELETE FROM users WHERE id = $1 RETURNING *', [id]);
+
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: "User not found" });
         }
 
-        await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
-
-        res.json({ message: "User deleted" });
+        await client.query('COMMIT'); // Save changes
+        res.json({ message: "User and all related data deleted successfully!" });
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server Error" });
+        await client.query('ROLLBACK'); // Undo everything if it fails
+        console.error("Delete Error:", err.message);
+        res.status(500).json({ message: "Server Error: Could not delete user due to linked data." });
+    } finally {
+        client.release();
     }
 });
-
 router.post('/forgot-password', async (req, res) => {
     try {
         const { email } = req.body;
