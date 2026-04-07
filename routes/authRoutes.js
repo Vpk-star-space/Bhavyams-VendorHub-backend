@@ -264,7 +264,7 @@ router.get('/all-users', protect,adminOnly, async (req, res) => {
     }
 });
 
-router.delete('/delete-user/:id', protect, async (req, res) => {
+router.delete('/delete-user/:id', protect,adminOnly, async (req, res) => {
     try {
         if (req.user.role !== 'admin') {
             return res.status(403).json({ message: "Admin only" });
@@ -388,21 +388,22 @@ router.delete('/admin/delete-product/:id', protect, adminOnly, async (req, res) 
     }
 });
 
-// ================== ADMIN: GET ALL PAYMENTS ==================
+// ================== ADMIN: GET ALL PAYMENTS (Fixed) ==================
 router.get('/admin/all-payments', protect, adminOnly, async (req, res) => {
     try {
-        // This query gets payment details and joins with user names so the admin knows who paid
+        // 🚀 THE FIX: Change 'FROM payments p' to 'FROM orders o'
         const payments = await pool.query(`
             SELECT 
-                p.id, 
-                p.payment_id, 
-                p.amount, 
-                p.status, 
-                p.created_at, 
-                u.username as customer_name
-            FROM payments p
-            LEFT JOIN users u ON p.user_id = u.id
-            ORDER BY p.created_at DESC
+                o.id, 
+                o.payment_id, 
+                o.total_price AS amount, 
+                o.status, 
+                o.created_at, 
+                u.username AS customer_name
+            FROM orders o
+            LEFT JOIN users u ON o.user_id = u.id
+            WHERE o.payment_id IS NOT NULL
+            ORDER BY o.created_at DESC
         `);
 
         res.json(payments.rows);
