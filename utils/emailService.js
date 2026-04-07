@@ -1,20 +1,27 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// 🚀 UPDATED GMAIL TRANSPORTER FOR RENDER
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
-    secure: false, // 🔒 MUST be false for port 587
+    secure: false, // Must be false for 587
+    requireTLS: true, // 🚀 FORCE the connection to upgrade to TLS
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     },
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
     tls: {
-        rejectUnauthorized: false // 🛡️ Helps with connection stability on cloud servers
-    }
+        // 🛡️ Critical for Singapore Region
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false
+    },
+    connectionTimeout: 20000, // 20 seconds
+    greetingTimeout: 20000,
+    socketTimeout: 20000
 });
-
 const frontendUrl = process.env.FRONTEND_URL || 'https://bhavyams-vendor-hub-vpk.vercel.app';
 
 // 🎨 GLOBAL STYLES & HEADER
