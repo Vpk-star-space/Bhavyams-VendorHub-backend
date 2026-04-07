@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
-const { protect,adminOnly } = require('../middleware/authMiddleware');
+const { protect,adminOnly} = require('../middleware/authMiddleware');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 const { OAuth2Client } = require('google-auth-library');
 
