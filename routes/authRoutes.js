@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
-const { protect,adminOnly} = require('../middleware/authMiddleware');
+const { protect, adminOnly} = require('../middleware/authMiddleware');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 const { OAuth2Client } = require('google-auth-library');
 
@@ -53,7 +53,7 @@ router.post('/google-login', async (req, res) => {
                 `INSERT INTO users 
                 (username, email, google_id, is_google_user, role, is_verified)
                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-                [name, email, sub, true, role ||'customer', true] // ✅ FIXED ROLE
+                [name, email, sub, true, role ||'customer', true] 
             );
 
             user = newUser.rows[0];
@@ -107,7 +107,11 @@ router.post('/send-otp', async (req, res) => {
             [email, otp]
         );
 
-        await sendOTPEmail(email, otp);
+        // 🚀 FIX: Try to find user to get their name, if they don't exist yet, say "Valued Customer"
+        const existingUser = await pool.query('SELECT username FROM users WHERE email = $1', [email]);
+        const userName = existingUser.rows.length > 0 ? existingUser.rows[0].username : "Valued Customer";
+
+        await sendOTPEmail(email, otp, userName);
 
         res.json({ message: "OTP sent successfully!" });
 
@@ -126,13 +130,11 @@ router.post('/register-with-otp', async (req, res) => {
             return res.status(400).json({ message: "All fields required" });
         }
 
-        // check existing
         const existing = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         if (existing.rows.length > 0) {
             return res.status(400).json({ message: "Email already exists" });
         }
 
-        // check otp
         const otpCheck = await pool.query(
             `SELECT * FROM otp_codes 
              WHERE email = $1 AND code = $2 AND expires_at > NOW()`,
@@ -155,11 +157,11 @@ router.post('/register-with-otp', async (req, res) => {
 
         await pool.query('DELETE FROM otp_codes WHERE email = $1', [email]);
 
-     // Use newUser.rows[0] or define 'user' first
-const user = newUser.rows[0]; 
+        const user = newUser.rows[0]; 
 
-sendWelcomeEmail(email, username, user.role)
-    .catch(err => console.error(err));
+        sendWelcomeEmail(email, username, user.role)
+            .catch(err => console.error(err));
+        
         res.status(201).json({
             message: "Registration Successful!",
             user: newUser.rows[0]
@@ -188,7 +190,6 @@ router.post('/login', async (req, res) => {
 
         const user = userRes.rows[0];
 
-        // 🔥 FIX: Google users
         if (!user.password_hash) {
             return res.status(400).json({ message: "Use Google login" });
         }
@@ -246,45 +247,30 @@ router.put('/update-profile', protect, async (req, res) => {
 });
 
 // ================== 7. ADMIN ==================
-router.get('/all-users', protect,adminOnly, async (req, res) => {
+router.get('/all-users', protect, adminOnly, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ message: "Admin only" });
-        }
-
         const users = await pool.query(
             'SELECT id, username, email, role, is_verified FROM users ORDER BY id ASC'
         );
-
         res.json(users.rows);
-
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Server Error" });
     }
 });
 
-// ================== ADMIN: DELETE USER (Safe Cleanup) ==================
+// ================== ADMIN: DELETE USER ==================
 router.delete('/delete-user/:id', protect, adminOnly, async (req, res) => {
     const { id } = req.params;
-    const client = await pool.connect(); // Use a client for Transaction
+    const client = await pool.connect(); 
     
     try {
-        await client.query('BEGIN'); // Start Transaction
-
-        // 1. Delete user's Cart items
+        await client.query('BEGIN'); 
         await client.query('DELETE FROM cart WHERE user_id = $1', [id]);
-
-        // 2. Delete user's Reviews
         await client.query('DELETE FROM reviews WHERE user_id = $1', [id]);
-
-        // 3. Delete user's Orders (Both as customer and vendor)
         await client.query('DELETE FROM orders WHERE user_id = $1 OR vendor_id = $1', [id]);
-
-        // 4. Delete user's Products (If they were a vendor)
         await client.query('DELETE FROM products WHERE vendor_id = $1', [id]);
-
-        // 5. FINALLY, delete the user themselves
+        
         const result = await client.query('DELETE FROM users WHERE id = $1 RETURNING *', [id]);
 
         if (result.rows.length === 0) {
@@ -292,17 +278,19 @@ router.delete('/delete-user/:id', protect, adminOnly, async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        await client.query('COMMIT'); // Save changes
+        await client.query('COMMIT'); 
         res.json({ message: "User and all related data deleted successfully!" });
 
     } catch (err) {
-        await client.query('ROLLBACK'); // Undo everything if it fails
+        await client.query('ROLLBACK'); 
         console.error("Delete Error:", err.message);
         res.status(500).json({ message: "Server Error: Could not delete user due to linked data." });
     } finally {
         client.release();
     }
 });
+
+// ================== FORGOT PASSWORD ==================
 router.post('/forgot-password', async (req, res) => {
     try {
         const { email } = req.body;
@@ -324,12 +312,12 @@ router.post('/forgot-password', async (req, res) => {
             [otp, expiry, email]
         );
 
-        // ✅ FIX: Prevent crash if email fails
         try {
-            await sendOTPEmail(email, otp);
+            // 🚀 FIX: Passed the username to the OTP email!
+            await sendOTPEmail(email, otp, user.rows[0].username);
         } catch (emailErr) {
             console.error("Email Error:", emailErr);
-            console.log("OTP (fallback):", otp); // 🔥 VERY IMPORTANT FOR DEBUG
+            console.log("OTP (fallback):", otp); 
         }
 
         res.json({ message: "Reset code sent!" });
@@ -339,6 +327,7 @@ router.post('/forgot-password', async (req, res) => {
         res.status(500).json({ message: "Server Error" });
     }
 });
+
 // ================== 9. RESET PASSWORD ==================
 router.post('/reset-password', async (req, res) => {
     try {
@@ -376,23 +365,18 @@ router.get('/google-client-id', (req, res) => {
     if (!process.env.GOOGLE_CLIENT_ID) {
         return res.status(500).json({ message: "Google Client ID not set" });
     }
-
     res.json({ clientId: process.env.GOOGLE_CLIENT_ID });
-
-
 });
 
 // ================== ADMIN: GET ALL PRODUCTS ==================
 router.get('/admin/all-products', protect, adminOnly, async (req, res) => {
     try {
-        // This query joins with the users table to get the Vendor's Name
         const products = await pool.query(`
             SELECT p.*, u.username as vendor_name 
             FROM products p 
             JOIN users u ON p.vendor_id = u.id 
             ORDER BY p.id DESC
         `);
-
         res.json(products.rows);
     } catch (err) {
         console.error("Admin Product Fetch Error:", err.message);
@@ -411,10 +395,9 @@ router.delete('/admin/delete-product/:id', protect, adminOnly, async (req, res) 
     }
 });
 
-// ================== ADMIN: GET ALL PAYMENTS (Fixed) ==================
+// ================== ADMIN: GET ALL PAYMENTS ==================
 router.get('/admin/all-payments', protect, adminOnly, async (req, res) => {
     try {
-        // 🚀 THE FIX: Change 'FROM payments p' to 'FROM orders o'
         const payments = await pool.query(`
             SELECT 
                 o.id, 
@@ -428,7 +411,6 @@ router.get('/admin/all-payments', protect, adminOnly, async (req, res) => {
             WHERE o.payment_id IS NOT NULL
             ORDER BY o.created_at DESC
         `);
-
         res.json(payments.rows);
     } catch (err) {
         console.error("Admin Payments Fetch Error:", err.message);

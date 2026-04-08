@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 // 📍 Top of orderRoutes.js
-const { protect, adminOnly,authorize } = require('../middleware/authMiddleware');
+const { protect, adminOnly, authorize } = require('../middleware/authMiddleware');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-// 🛡️ IMPORT BOTH EMAIL FUNCTIONS (Required for your mails to work)
+// 🛡️ IMPORT BOTH EMAIL FUNCTIONS
 const { sendOrderEmail, sendDeliveryEmail } = require('../utils/emailService'); 
 
 require('dotenv').config(); 
@@ -20,35 +20,30 @@ router.get('/get-razorpay-key', (req, res) => {
     res.json({ key: process.env.RAZORPAY_KEY_ID });
 });
 
-// 🛒 ROUTE 2: CHECKOUT (Create Razorpay Order ID)
 router.post('/checkout', protect, async (req, res) => {
-    const { cartItems } = req.body; 
+    const { cartItems, finalTotal } = req.body; 
+
     try {
-        let totalCartPrice = 0;
-        for (let item of cartItems) {
-            totalCartPrice += Number(item.price) * item.quantity;
-        }
+        const amountToCharge = finalTotal ? finalTotal : cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
         const options = {
-            amount: Math.round(totalCartPrice * 100), // Amount in paise
+            amount: amountToCharge * 100, 
             currency: "INR",
-            receipt: `receipt_${Date.now()}`
+            receipt: `receipt_order_${Date.now()}`,
         };
 
-        const rzpOrder = await razorpay.orders.create(options);
-        res.status(201).json({ razorpayOrder: rzpOrder });
+        const order = await razorpay.orders.create(options);
+        res.json({ razorpayOrder: order });
 
     } catch (err) {
-        console.error("Checkout Error:", err.message);
-        res.status(400).json({ message: err.message }); 
+        res.status(500).json({ message: "Error creating Razorpay order" });
     }
 });
 
-// ✅ ROUTE 3: VERIFY PAYMENT (With Stock Reduction & Fail-Safe Emails)
+// ✅ ROUTE 3: VERIFY PAYMENT 
 router.post('/verify-payment', protect, async (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, cartItems } = req.body;
     
-    // 1. Verify Razorpay Signature
     const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
     shasum.update(`${razorpay_order_id}|${razorpay_payment_id}`);
     const digest = shasum.digest('hex');
@@ -64,10 +59,11 @@ router.post('/verify-payment', protect, async (req, res) => {
         // 2. Get User Details
         const userRes = await client.query('SELECT email, username, address FROM users WHERE id = $1', [req.user.id]);
         const userEmail = userRes.rows[0]?.email;
+        // 🚀 FIX: Extract the username to send to the email!
+        const userName = userRes.rows[0]?.username || "Valued Customer";
         const deliveryAddress = userRes.rows[0]?.address || "No Address Found";
 
         for (let item of cartItems) {
-            // 3. Get Product Details & Lock row for stock update
             const productRes = await client.query(
                 "SELECT vendor_id, delivery_minutes, name, image_url, stock_count FROM products WHERE id = $1 FOR UPDATE", 
                 [item.id]
@@ -76,12 +72,10 @@ router.post('/verify-payment', protect, async (req, res) => {
 
             if (!prod) throw new Error(`Product not found: ${item.id}`);
 
-            // 4. Check if stock is sufficient
             if (Number(prod.stock_count) < item.quantity) {
                 throw new Error(`Insufficient stock for ${prod.name}.`);
             }
 
-            // 5. 📉 REDUCE STOCK (The Bug Fix!)
             await client.query(
                 "UPDATE products SET stock_count = stock_count - $1 WHERE id = $2",
                 [item.quantity, item.id]
@@ -90,7 +84,6 @@ router.post('/verify-payment', protect, async (req, res) => {
             const vendorId = prod?.vendor_id || 1; 
             const waitTimeMins = prod?.delivery_minutes || 6;
 
-            // 6. Create the Order
             const orderRes = await client.query(
                 `INSERT INTO orders (user_id, vendor_id, product_id, quantity, total_price, status, delivery_address, payment_id, delivery_minutes) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
@@ -106,14 +99,14 @@ router.post('/verify-payment', protect, async (req, res) => {
                 image_url: prod.image_url
             };
 
-            // 📧 Send Confirmation Email (Background)
-            sendOrderEmail(userEmail, orderPayload).catch(err => console.log("Email Error:", err.message));
+            // 🚀 FIX: Passed `userName` to the email function!
+            sendOrderEmail(userEmail, orderPayload, userName).catch(err => console.log("Email Error:", err.message));
 
-            // 🚚 Delivery Timer
             setTimeout(async () => {
                 try {
                     await pool.query("UPDATE orders SET status = 'Delivered' WHERE id = $1", [orderId]);
-                    sendDeliveryEmail(userEmail, orderPayload).catch(err => console.log("Delivery Email Error:", err.message));
+                    // 🚀 FIX: Passed `userName` to the delivery email function!
+                    sendDeliveryEmail(userEmail, orderPayload, userName).catch(err => console.log("Delivery Email Error:", err.message));
                 } catch (err) { console.error("Timer Error:", err.message); }
             }, waitTimeMins * 60 * 1000);
         }
@@ -129,6 +122,7 @@ router.post('/verify-payment', protect, async (req, res) => {
         client.release(); 
     }
 });
+
 // 📈 VENDOR SALES
 router.get('/my-sales', protect, authorize('vendor'), async (req, res) => {
     try {
@@ -148,7 +142,6 @@ router.get('/my-sales', protect, authorize('vendor'), async (req, res) => {
 router.post('/create-order', protect, async (req, res) => {
     const { productId, address } = req.body;
     try {
-        // 🛡️ SYSTEM FIX 2: Must select 'vendor_id' from products
         const productRes = await pool.query("SELECT vendor_id, delivery_minutes, price, email FROM products WHERE id = $1", [productId]);
         const deliveryMinutes = productRes.rows[0].delivery_minutes || 6;
         
@@ -163,7 +156,6 @@ router.post('/create-order', protect, async (req, res) => {
         setTimeout(async () => {
             try {
                 await pool.query("UPDATE orders SET status = 'Delivered' WHERE id = $1", [orderId]);
-                if (sendDeliveryEmail) await sendDeliveryEmail(req.user.email, orderId);
             } catch (err) { console.error("Auto-delivery failed"); }
         }, deliveryMinutes * 60 * 1000);
 
@@ -201,9 +193,8 @@ router.post('/add-review', protect, async (req, res) => {
 });
 
 // 🛡️ ADMIN: ALL ORDERS
-router.get('/admin-all', protect,adminOnly, async (req, res) => {
+router.get('/admin-all', protect, adminOnly, async (req, res) => {
     try {
-        
         const allOrders = await pool.query(
             `SELECT o.*, p.name as product_name, p.image_url, u.username as customer_name 
              FROM orders o 

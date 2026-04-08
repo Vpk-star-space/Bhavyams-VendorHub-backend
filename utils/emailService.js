@@ -43,13 +43,14 @@ const sendEmailViaAPI = async (to, subject, htmlContent) => {
     }
 };
 
-// 📧 1. SEND OTP EMAIL
-const sendOTPEmail = async (userEmail, otp) => {
+// 📧 1. SEND OTP EMAIL (Now includes Username)
+const sendOTPEmail = async (userEmail, otp, username = "Valued Customer") => {
     const html = `
         <div style="max-width: 500px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
             ${emailHeader}
             <div style="padding: 30px; text-align: center; background-color: #ffffff;">
                 <h2 style="color: #1e293b;">Account Verification</h2>
+                <p style="color: #475569; font-size: 16px;">Hi <b>${username}</b>,</p>
                 <p style="color: #475569;">Use the code below to securely sign in to your account.</p>
                 <div style="background: #f1f3f6; padding: 20px; border-radius: 8px; margin: 25px 0; font-size: 32px; font-weight: bold; color: #2874f0; letter-spacing: 8px;">
                     ${otp}
@@ -61,8 +62,8 @@ const sendOTPEmail = async (userEmail, otp) => {
     return sendEmailViaAPI(userEmail, `Your Verification Code: ${otp}`, html);
 };
 
-// 📧 2. SEND ORDER CONFIRMATION
-const sendOrderEmail = async (userEmail, orderDetails) => {
+// 📧 2. SEND ORDER CONFIRMATION (Now includes Username)
+const sendOrderEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
     const { order_id, product_name, total_price, image_url } = orderDetails;
     
     const rawUrl = image_url || '';
@@ -74,8 +75,9 @@ const sendOrderEmail = async (userEmail, orderDetails) => {
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
             ${emailHeader}
             <div style="padding: 30px; background-color: #ffffff;">
-                <h2 style="color: #16a34a; margin-top: 0;">Woohoo! Order Confirmed ✅</h2>
-                <p style="color: #475569;">Hi there, your order <b>#${order_id}</b> has been successfully placed.</p>
+                <h2 style="color: #16a34a; margin-top: 0; text-align: center;">Woohoo! Order Confirmed ✅</h2>
+                <p style="color: #475569; font-size: 16px;">Hi <b>${username}</b>,</p>
+                <p style="color: #475569;">Your order <b>#${order_id}</b> has been successfully placed and is being prepared by the vendor.</p>
                 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; border: 1px solid #f1f5f9;">
                     <tr>
                         <td style="padding: 15px; width: 100px;">
@@ -96,8 +98,8 @@ const sendOrderEmail = async (userEmail, orderDetails) => {
     return sendEmailViaAPI(userEmail, `Order Confirmed! #${order_id}`, html);
 };
 
-// 📧 3. SEND DELIVERY NOTIFICATION
-const sendDeliveryEmail = async (userEmail, orderDetails) => {
+// 📧 3. SEND DELIVERY NOTIFICATION (Now includes Username)
+const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
     const { order_id, product_name, image_url } = orderDetails;
     
     const rawUrl = image_url || '';
@@ -110,6 +112,7 @@ const sendDeliveryEmail = async (userEmail, orderDetails) => {
             ${emailHeader}
             <div style="padding: 30px; text-align: center; background-color: #ffffff;">
                 <h2 style="color: #2874f0;">Your order is delivered! 🏠</h2>
+                <p style="color: #475569; font-size: 16px; text-align: left;">Hi <b>${username}</b>,</p>
                 <img src="${cleanImg}" width="150" style="margin: 20px auto; display: block; border-radius: 8px;" />
                 <p style="color: #475569; font-size: 16px;">We hope you are loving your new <b>${product_name}</b>!</p>
                 <div style="margin-top: 30px;">
@@ -121,7 +124,7 @@ const sendDeliveryEmail = async (userEmail, orderDetails) => {
     return sendEmailViaAPI(userEmail, "Order Delivered! 🚚", html);
 };
 
-// 📧 4. WELCOME EMAIL
+// 📧 4. WELCOME EMAIL (Already had Username)
 const sendWelcomeEmail = async (userEmail, username, role) => {
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
