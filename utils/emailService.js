@@ -3,10 +3,9 @@ require('dotenv').config();
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 const API_KEY = process.env.BREVO_API_KEY; 
-const SENDER_EMAIL = process.env.EMAIL_USER; // Pulls pavanvenkat63@gmail.com from Render
+const SENDER_EMAIL = process.env.EMAIL_USER; 
 const frontendUrl = process.env.FRONTEND_URL || 'https://bhavyams-vendor-hub-vpk.vercel.app';
 
-// 🎨 PREMIUM EMAIL HEADER
 const emailHeader = `
     <div style="background-color: #2874f0; padding: 25px; text-align: center; border-radius: 8px 8px 0 0;">
         <h1 style="color: #ffffff; margin: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-style: italic; font-size: 32px; letter-spacing: 1px;">
@@ -23,7 +22,6 @@ const emailFooter = `
     </div>
 `;
 
-// 📧 CORE API SENDER (Bypasses Singapore Port Blocks)
 const sendEmailViaAPI = async (to, subject, htmlContent) => {
     try {
         await axios.post(BREVO_API_URL, {
@@ -32,18 +30,13 @@ const sendEmailViaAPI = async (to, subject, htmlContent) => {
             subject: subject,
             htmlContent: htmlContent
         }, {
-            headers: { 
-                'api-key': API_KEY, 
-                'Content-Type': 'application/json' 
-            }
+            headers: { 'api-key': API_KEY, 'Content-Type': 'application/json' }
         });
-        console.log(`✅ Success: Email sent to ${to}`);
     } catch (error) {
         console.error("❌ Brevo API Error:", error.response?.data || error.message);
     }
 };
 
-// 📧 1. SEND OTP EMAIL (Now includes Username)
 const sendOTPEmail = async (userEmail, otp, username = "Valued Customer") => {
     const html = `
         <div style="max-width: 500px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
@@ -55,21 +48,16 @@ const sendOTPEmail = async (userEmail, otp, username = "Valued Customer") => {
                 <div style="background: #f1f3f6; padding: 20px; border-radius: 8px; margin: 25px 0; font-size: 32px; font-weight: bold; color: #2874f0; letter-spacing: 8px;">
                     ${otp}
                 </div>
-                <p style="color: #94a3b8; font-size: 12px;">This code will expire in 10 minutes.</p>
             </div>
             ${emailFooter}
         </div>`;
     return sendEmailViaAPI(userEmail, `Your Verification Code: ${otp}`, html);
 };
 
-// 📧 2. SEND ORDER CONFIRMATION (Now includes Username)
 const sendOrderEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
     const { order_id, product_name, total_price, image_url } = orderDetails;
-    
     const rawUrl = image_url || '';
-    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') 
-        ? rawUrl.replace(/["\\]/g, '') 
-        : `https://bhavyams-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
+    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') ? rawUrl.replace(/["\\]/g, '') : `https://bhavyams-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
 
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
@@ -77,7 +65,7 @@ const sendOrderEmail = async (userEmail, orderDetails, username = "Valued Custom
             <div style="padding: 30px; background-color: #ffffff;">
                 <h2 style="color: #16a34a; margin-top: 0; text-align: center;">Woohoo! Order Confirmed ✅</h2>
                 <p style="color: #475569; font-size: 16px;">Hi <b>${username}</b>,</p>
-                <p style="color: #475569;">Your order <b>#${order_id}</b> has been successfully placed and is being prepared by the vendor.</p>
+                <p style="color: #475569;">Your order <b>#${order_id}</b> has been successfully placed.</p>
                 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; border: 1px solid #f1f5f9;">
                     <tr>
                         <td style="padding: 15px; width: 100px;">
@@ -98,14 +86,10 @@ const sendOrderEmail = async (userEmail, orderDetails, username = "Valued Custom
     return sendEmailViaAPI(userEmail, `Order Confirmed! #${order_id}`, html);
 };
 
-// 📧 3. SEND DELIVERY NOTIFICATION (Now includes Username)
 const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
     const { order_id, product_name, image_url } = orderDetails;
-    
     const rawUrl = image_url || '';
-    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') 
-        ? rawUrl.replace(/["\\]/g, '') 
-        : `https://bhavyams-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
+    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') ? rawUrl.replace(/["\\]/g, '') : `https://bhavyams-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
 
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
@@ -124,7 +108,6 @@ const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Cus
     return sendEmailViaAPI(userEmail, "Order Delivered! 🚚", html);
 };
 
-// 📧 4. WELCOME EMAIL (Already had Username)
 const sendWelcomeEmail = async (userEmail, username, role) => {
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
@@ -141,9 +124,4 @@ const sendWelcomeEmail = async (userEmail, username, role) => {
     return sendEmailViaAPI(userEmail, "Welcome to Bhavyams Hub!", html);
 };
 
-module.exports = {
-    sendOrderEmail,
-    sendDeliveryEmail,
-    sendOTPEmail,
-    sendWelcomeEmail
-};
+module.exports = { sendOrderEmail, sendDeliveryEmail, sendOTPEmail, sendWelcomeEmail };
