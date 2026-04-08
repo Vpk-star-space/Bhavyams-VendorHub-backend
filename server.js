@@ -15,29 +15,19 @@ const app = express();
 // 🚀 PRODUCTION FIX: Trust the Render Proxy
 app.set('trust proxy', 1);
 
-// 📍 Inside server.js
-
-const allowedOrigins = [
-    'https://bhavyams-vendor-hub-vpk.vercel.app',
-    'https://bhavyams-vendor-hub-vpk.vercel.app/', // Added with slash
-    'http://localhost:3000'
-];
-
+// 📍 BULLETPROOF CORS CONFIGURATION
 app.use(cors({
-    origin: function (origin, callback) {
-        // 🚀 THE LOGIC FIX:
-        // If the origin matches any in our list OR if there is NO origin (server-to-server), allow it.
-        if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes(origin + '/')) {
-            return callback(null, true);
-        } else {
-            console.log("❌ CORS Blocked this URL:", origin); // Check Render logs to see what's actually hitting the server
-            return callback(new Error('CORS Not Allowed'), false);
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added OPTIONS
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+    origin: [
+        'http://localhost:3000',
+        'https://bhavyams-vendor-hub-vpk.vercel.app',
+        'https://bhavyams-vendor-hub-vpk.vercel.app/'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: true,
+    optionsSuccessStatus: 200 // Some legacy browsers choke on 204
 }));
+
 app.use(express.json());
 
 // Routes
