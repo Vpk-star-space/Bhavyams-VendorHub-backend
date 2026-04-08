@@ -360,14 +360,32 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// ================== 10. GOOGLE CLIENT ID ==================
+// ================== GOOGLE CLIENT ID ==================
 router.get('/google-client-id', (req, res) => {
-    if (!process.env.GOOGLE_CLIENT_ID) {
-        return res.status(500).json({ message: "Google Client ID not set" });
-    }
-    res.json({ clientId: process.env.GOOGLE_CLIENT_ID });
-});
+    try {
+        const clientId = process.env.GOOGLE_CLIENT_ID;
 
+        if (!clientId) {
+            console.error("❌ GOOGLE_CLIENT_ID is missing in ENV");
+            return res.status(500).json({
+                success: false,
+                message: "Google Client ID not configured"
+            });
+        }
+
+        res.json({
+            success: true,
+            clientId
+        });
+
+    } catch (err) {
+        console.error("🔥 Error in google-client-id route:", err);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+});
 // ================== ADMIN: GET ALL PRODUCTS ==================
 router.get('/admin/all-products', protect, adminOnly, async (req, res) => {
     try {
