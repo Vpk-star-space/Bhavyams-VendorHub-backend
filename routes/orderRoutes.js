@@ -18,11 +18,10 @@ router.get('/get-razorpay-key', (req, res) => {
     res.json({ key: process.env.RAZORPAY_KEY_ID });
 });
 
-// 🚀 ROUTE 2: CHECKOUT (Added Live Stock Pre-Check!)
+// 🚀 ROUTE 2: CHECKOUT (With Live Stock Pre-Check)
 router.post('/checkout', protect, async (req, res) => {
     const { cartItems, finalTotal } = req.body; 
     
-    // Connect to DB to check live stock before opening Razorpay
     const client = await pool.connect();
 
     try {
@@ -35,7 +34,6 @@ router.post('/checkout', protect, async (req, res) => {
                 return res.status(400).json({ message: "Item no longer exists in the catalog." });
             }
 
-            // If someone else bought it while it was sitting in this user's cart
             if (Number(prod.stock_count) < item.quantity) {
                 return res.status(400).json({ 
                     message: `Oops! Someone just bought the last ${prod.name}. It is now out of stock.` 
@@ -43,7 +41,6 @@ router.post('/checkout', protect, async (req, res) => {
             }
         }
 
-        // ✅ Stock is confirmed available. Proceed to create Razorpay order.
         const amountToCharge = finalTotal ? finalTotal : cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
         const options = {
@@ -63,7 +60,7 @@ router.post('/checkout', protect, async (req, res) => {
     }
 });
 
-// ✅ ROUTE 3: VERIFY PAYMENT (Fixed Discounted Price)
+// ✅ ROUTE 3: VERIFY PAYMENT (With AUTO-REFUND Protection)
 router.post('/verify-payment', protect, async (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, cartItems } = req.body;
     
@@ -93,8 +90,9 @@ router.post('/verify-payment', protect, async (req, res) => {
 
             if (!prod) throw new Error(`Product not found: ${item.id}`);
 
+            // ⚠️ This exact phrase triggers the refund below!
             if (Number(prod.stock_count) < item.quantity) {
-                throw new Error(`Insufficient stock for ${prod.name}.`);
+                throw new Error(`Insufficient stock`); 
             }
 
             await client.query(
@@ -106,7 +104,7 @@ router.post('/verify-payment', protect, async (req, res) => {
             const waitTimeMins = prod?.delivery_minutes || 6;
 
             const itemTotal = item.price * item.quantity;
-            const discountedPrice = Math.round(itemTotal * 0.90); // 10% Off
+            const discountedPrice = Math.round(itemTotal * 0.90); 
 
             const orderRes = await client.query(
                 `INSERT INTO orders (user_id, vendor_id, product_id, quantity, total_price, status, delivery_address, payment_id, delivery_minutes) 
@@ -139,6 +137,22 @@ router.post('/verify-payment', protect, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Verification Error:", err.message);
+        
+        // 💸 THE MAGIC AUTO-REFUND SYSTEM
+        // If the database rolled back because of "Insufficient stock", refund the user instantly!
+        if (razorpay_payment_id && err.message.includes('Insufficient stock')) {
+            try {
+                await razorpay.payments.refund(razorpay_payment_id);
+                console.log(`✅ Successfully auto-refunded payment ${razorpay_payment_id}`);
+                return res.status(400).json({ 
+                    message: "Oops! Someone else bought the last item while you were paying. We have INSTANTLY REFUNDED your money to your bank." 
+                });
+            } catch (refundErr) {
+                console.error("Razorpay Refund Error:", refundErr.message);
+                return res.status(500).json({ message: "Item out of stock. Please contact support for your refund." });
+            }
+        }
+
         res.status(500).json({ message: err.message || "Order verification failed." });
     } finally { 
         client.release(); 
