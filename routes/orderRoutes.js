@@ -1,11 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-// 📍 Top of orderRoutes.js
 const { protect, adminOnly, authorize } = require('../middleware/authMiddleware');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-// 🛡️ IMPORT BOTH EMAIL FUNCTIONS
 const { sendOrderEmail, sendDeliveryEmail } = require('../utils/emailService'); 
 
 require('dotenv').config(); 
@@ -20,10 +18,32 @@ router.get('/get-razorpay-key', (req, res) => {
     res.json({ key: process.env.RAZORPAY_KEY_ID });
 });
 
+// 🚀 ROUTE 2: CHECKOUT (Added Live Stock Pre-Check!)
 router.post('/checkout', protect, async (req, res) => {
     const { cartItems, finalTotal } = req.body; 
+    
+    // Connect to DB to check live stock before opening Razorpay
+    const client = await pool.connect();
 
     try {
+        // 🛑 PRE-CHECKOUT STOCK VALIDATION
+        for (let item of cartItems) {
+            const stockRes = await client.query("SELECT name, stock_count FROM products WHERE id = $1", [item.id]);
+            const prod = stockRes.rows[0];
+
+            if (!prod) {
+                return res.status(400).json({ message: "Item no longer exists in the catalog." });
+            }
+
+            // If someone else bought it while it was sitting in this user's cart
+            if (Number(prod.stock_count) < item.quantity) {
+                return res.status(400).json({ 
+                    message: `Oops! Someone just bought the last ${prod.name}. It is now out of stock.` 
+                });
+            }
+        }
+
+        // ✅ Stock is confirmed available. Proceed to create Razorpay order.
         const amountToCharge = finalTotal ? finalTotal : cartItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
         const options = {
@@ -36,7 +56,10 @@ router.post('/checkout', protect, async (req, res) => {
         res.json({ razorpayOrder: order });
 
     } catch (err) {
+        console.error("Checkout Error:", err.message);
         res.status(500).json({ message: "Error creating Razorpay order" });
+    } finally {
+        client.release();
     }
 });
 
@@ -82,11 +105,9 @@ router.post('/verify-payment', protect, async (req, res) => {
             const vendorId = prod?.vendor_id || 1; 
             const waitTimeMins = prod?.delivery_minutes || 6;
 
-            // 🚀 THE MAGIC FIX: Calculate the 10% discount here!
             const itemTotal = item.price * item.quantity;
             const discountedPrice = Math.round(itemTotal * 0.90); // 10% Off
 
-            // Save the discountedPrice to the database!
             const orderRes = await client.query(
                 `INSERT INTO orders (user_id, vendor_id, product_id, quantity, total_price, status, delivery_address, payment_id, delivery_minutes) 
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
@@ -98,89 +119,7 @@ router.post('/verify-payment', protect, async (req, res) => {
             const orderPayload = {
                 order_id: orderId,
                 product_name: prod.name,
-                total_price: discountedPrice, // Send the discounted price to email!
-                image_url: prod.image_url
-            };
-
-            sendOrderEmail(userEmail, orderPayload, userName).catch(err => console.log("Email Error:", err.message));
-
-            setTimeout(async () => {
-                try {
-                    await pool.query("UPDATE orders SET status = 'Delivered' WHERE id = $1", [orderId]);
-                    sendDeliveryEmail(userEmail, orderPayload, userName).catch(err => console.log("Delivery Email Error:", err.message));
-                } catch (err) { console.error("Timer Error:", err.message); }
-            }, waitTimeMins * 60 * 1000);
-        }
-
-        await client.query('COMMIT');
-        res.json({ status: "success" });
-
-    } catch (err) {
-        await client.query('ROLLBACK');
-        console.error("Verification Error:", err.message);
-        res.status(500).json({ message: err.message || "Order verification failed." });
-    } finally { 
-        client.release(); 
-    }
-});// ✅ ROUTE 3: VERIFY PAYMENT (Fixed Discounted Price)
-router.post('/verify-payment', protect, async (req, res) => {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, cartItems } = req.body;
-    
-    const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
-    shasum.update(`${razorpay_order_id}|${razorpay_payment_id}`);
-    const digest = shasum.digest('hex');
-
-    if (digest !== razorpay_signature) {
-        return res.status(400).json({ message: "Invalid Signature!" });
-    }
-
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        const userRes = await client.query('SELECT email, username, address FROM users WHERE id = $1', [req.user.id]);
-        const userEmail = userRes.rows[0]?.email;
-        const userName = userRes.rows[0]?.username || "Valued Customer";
-        const deliveryAddress = userRes.rows[0]?.address || "No Address Found";
-
-        for (let item of cartItems) {
-            const productRes = await client.query(
-                "SELECT vendor_id, delivery_minutes, name, image_url, stock_count FROM products WHERE id = $1 FOR UPDATE", 
-                [item.id]
-            );
-            const prod = productRes.rows[0];
-
-            if (!prod) throw new Error(`Product not found: ${item.id}`);
-
-            if (Number(prod.stock_count) < item.quantity) {
-                throw new Error(`Insufficient stock for ${prod.name}.`);
-            }
-
-            await client.query(
-                "UPDATE products SET stock_count = stock_count - $1 WHERE id = $2",
-                [item.quantity, item.id]
-            );
-
-            const vendorId = prod?.vendor_id || 1; 
-            const waitTimeMins = prod?.delivery_minutes || 6;
-
-            // 🚀 THE MAGIC FIX: Calculate the 10% discount here!
-            const itemTotal = item.price * item.quantity;
-            const discountedPrice = Math.round(itemTotal * 0.90); // 10% Off
-
-            // Save the discountedPrice to the database!
-            const orderRes = await client.query(
-                `INSERT INTO orders (user_id, vendor_id, product_id, quantity, total_price, status, delivery_address, payment_id, delivery_minutes) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-                [req.user.id, vendorId, item.id, item.quantity, discountedPrice, 'Confirmed', deliveryAddress, razorpay_payment_id, waitTimeMins]
-            );
-            
-            const orderId = orderRes.rows[0].id;
-
-            const orderPayload = {
-                order_id: orderId,
-                product_name: prod.name,
-                total_price: discountedPrice, // Send the discounted price to email!
+                total_price: discountedPrice, 
                 image_url: prod.image_url
             };
 
@@ -242,9 +181,7 @@ router.post('/create-order', protect, async (req, res) => {
             } catch (err) { console.error("Auto-delivery failed"); }
         }, deliveryMinutes * 60 * 1000);
 
-    } catch (err) {
-        res.status(500).send("Order placement failed");
-    }
+    } catch (err) { res.status(500).send("Order placement failed"); }
 });
 
 // 🚚 CUSTOMER ORDERS 
