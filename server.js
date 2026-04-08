@@ -15,17 +15,15 @@ const app = express();
 // 🚀 PRODUCTION FIX: Trust the Render Proxy
 app.set('trust proxy', 1);
 
-// 📍 BULLETPROOF CORS CONFIGURATION
+// 📍 THE "ALLOW EVERYTHING" CORS CONFIGURATION
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'https://bhavyams-vendor-hub-vpk.vercel.app',
-        'https://bhavyams-vendor-hub-vpk.vercel.app/'
-    ],
+    origin: function(origin, callback) {
+        // Safely allow absolutely ANY origin to connect
+        return callback(null, true);
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-    credentials: true,
-    optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+    credentials: true
 }));
 
 app.use(express.json());
@@ -52,6 +50,12 @@ app.get('/test-db', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: '❌ Database connection failed' });
     }
+});
+
+// 🛡️ FATAL ERROR CATCHER: Prevents the server from crashing and causing 521s
+app.use((err, req, res, next) => {
+    console.error("🔥 FATAL SERVER ERROR:", err.stack);
+    res.status(500).json({ message: "Internal Server Error", error: err.message });
 });
 
 const PORT = process.env.PORT || 5000;
