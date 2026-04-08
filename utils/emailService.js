@@ -108,6 +108,36 @@ const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Cus
     return sendEmailViaAPI(userEmail, "Order Delivered! 🚚", html);
 };
 
+// 🚀 NEW: OUT OF STOCK REFUND EMAIL
+const sendRefundEmail = async (userEmail, productName, username = "Valued Customer") => {
+    const html = `
+        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
+            ${emailHeader}
+            <div style="padding: 30px; text-align: center; background-color: #ffffff;">
+                <h2 style="color: #ef4444;">Refund Initiated 💸</h2>
+                <p style="color: #475569; font-size: 16px; text-align: left;">Hi <b>${username}</b>,</p>
+                <p style="color: #475569; font-size: 16px; text-align: left;">
+                    We are so sorry, but another customer purchased the last <b>${productName}</b> while your payment was processing.
+                </p>
+                
+                <div style="background: #fee2e2; border: 1px solid #f87171; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: left;">
+                    <p style="color: #991b1b; margin: 0; font-weight: bold;">✅ Instant Refund Processed</p>
+                    <p style="color: #991b1b; margin: 5px 0 0 0; font-size: 14px;">We have automatically reversed the charge. The money will reflect in your original payment method in 3-5 business days.</p>
+                </div>
+
+                <p style="color: #475569; font-size: 16px; text-align: left;">
+                    Keep an eye on the store—our vendors restock frequently!
+                </p>
+
+                <div style="margin-top: 30px;">
+                    <a href="${frontendUrl}" style="background-color: #2874f0; color: white; padding: 12px 30px; text-decoration: none; font-weight: bold; border-radius: 3px; display: inline-block;">CONTINUE SHOPPING</a>
+                </div>
+            </div>
+            ${emailFooter}
+        </div>`;
+    return sendEmailViaAPI(userEmail, "Action Required: Order Refunded (Out of Stock)", html);
+};
+
 const sendWelcomeEmail = async (userEmail, username, role) => {
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
@@ -124,4 +154,5 @@ const sendWelcomeEmail = async (userEmail, username, role) => {
     return sendEmailViaAPI(userEmail, "Welcome to Bhavyams Hub!", html);
 };
 
-module.exports = { sendOrderEmail, sendDeliveryEmail, sendOTPEmail, sendWelcomeEmail };
+// 🚀 FIX: Don't forget to export the new function!
+module.exports = { sendOrderEmail, sendDeliveryEmail, sendOTPEmail, sendWelcomeEmail, sendRefundEmail };

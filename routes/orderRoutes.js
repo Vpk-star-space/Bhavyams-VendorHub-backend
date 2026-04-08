@@ -4,7 +4,8 @@ const pool = require('../db');
 const { protect, adminOnly, authorize } = require('../middleware/authMiddleware');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-const { sendOrderEmail, sendDeliveryEmail } = require('../utils/emailService'); 
+// 🚀 FIX: Import the new sendRefundEmail function!
+const { sendOrderEmail, sendDeliveryEmail, sendRefundEmail } = require('../utils/emailService'); 
 
 require('dotenv').config(); 
 
@@ -13,19 +14,16 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-// 🔑 ROUTE 1: Provide Public Key ID to Frontend
 router.get('/get-razorpay-key', (req, res) => {
     res.json({ key: process.env.RAZORPAY_KEY_ID });
 });
 
-// 🚀 ROUTE 2: CHECKOUT (With Live Stock Pre-Check)
 router.post('/checkout', protect, async (req, res) => {
     const { cartItems, finalTotal } = req.body; 
     
     const client = await pool.connect();
 
     try {
-        // 🛑 PRE-CHECKOUT STOCK VALIDATION
         for (let item of cartItems) {
             const stockRes = await client.query("SELECT name, stock_count FROM products WHERE id = $1", [item.id]);
             const prod = stockRes.rows[0];
@@ -60,7 +58,7 @@ router.post('/checkout', protect, async (req, res) => {
     }
 });
 
-// ✅ ROUTE 3: VERIFY PAYMENT (With AUTO-REFUND Protection)
+
 router.post('/verify-payment', protect, async (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, cartItems } = req.body;
     
@@ -73,12 +71,18 @@ router.post('/verify-payment', protect, async (req, res) => {
     }
 
     const client = await pool.connect();
+    
+    // 🚀 We set these variables OUTSIDE the try block so the catch block can use them!
+    let userEmailForRefund = null;
+    let userNameForRefund = "Valued Customer";
+    let failedProductName = "an item in your cart";
+
     try {
         await client.query('BEGIN');
 
         const userRes = await client.query('SELECT email, username, address FROM users WHERE id = $1', [req.user.id]);
-        const userEmail = userRes.rows[0]?.email;
-        const userName = userRes.rows[0]?.username || "Valued Customer";
+        userEmailForRefund = userRes.rows[0]?.email;
+        userNameForRefund = userRes.rows[0]?.username || "Valued Customer";
         const deliveryAddress = userRes.rows[0]?.address || "No Address Found";
 
         for (let item of cartItems) {
@@ -88,9 +92,14 @@ router.post('/verify-payment', protect, async (req, res) => {
             );
             const prod = productRes.rows[0];
 
-            if (!prod) throw new Error(`Product not found: ${item.id}`);
+            if (!prod) {
+                failedProductName = "an item";
+                throw new Error(`Product not found: ${item.id}`);
+            }
 
-            // ⚠️ This exact phrase triggers the refund below!
+            // 🚀 Capture the actual product name in case it fails!
+            failedProductName = prod.name;
+
             if (Number(prod.stock_count) < item.quantity) {
                 throw new Error(`Insufficient stock`); 
             }
@@ -121,12 +130,12 @@ router.post('/verify-payment', protect, async (req, res) => {
                 image_url: prod.image_url
             };
 
-            sendOrderEmail(userEmail, orderPayload, userName).catch(err => console.log("Email Error:", err.message));
+            sendOrderEmail(userEmailForRefund, orderPayload, userNameForRefund).catch(err => console.log("Email Error:", err.message));
 
             setTimeout(async () => {
                 try {
                     await pool.query("UPDATE orders SET status = 'Delivered' WHERE id = $1", [orderId]);
-                    sendDeliveryEmail(userEmail, orderPayload, userName).catch(err => console.log("Delivery Email Error:", err.message));
+                    sendDeliveryEmail(userEmailForRefund, orderPayload, userNameForRefund).catch(err => console.log("Delivery Email Error:", err.message));
                 } catch (err) { console.error("Timer Error:", err.message); }
             }, waitTimeMins * 60 * 1000);
         }
@@ -138,14 +147,22 @@ router.post('/verify-payment', protect, async (req, res) => {
         await client.query('ROLLBACK');
         console.error("Verification Error:", err.message);
         
-        // 💸 THE MAGIC AUTO-REFUND SYSTEM
-        // If the database rolled back because of "Insufficient stock", refund the user instantly!
+        // 💸 THE MAGIC AUTO-REFUND SYSTEM & EMAIL NOTIFICATION
         if (razorpay_payment_id && err.message.includes('Insufficient stock')) {
             try {
+                // 1. Issue the refund to their bank
                 await razorpay.payments.refund(razorpay_payment_id);
                 console.log(`✅ Successfully auto-refunded payment ${razorpay_payment_id}`);
+                
+                // 2. 🚀 Send the specific "Refund Initiated" Email!
+                if (userEmailForRefund) {
+                    sendRefundEmail(userEmailForRefund, failedProductName, userNameForRefund)
+                        .catch(emailErr => console.log("Refund Email Error:", emailErr.message));
+                }
+
+                // 3. Show error on frontend screen
                 return res.status(400).json({ 
-                    message: "Oops! Someone else bought the last item while you were paying. We have INSTANTLY REFUNDED your money to your bank." 
+                    message: `Oops! Someone else bought the last ${failedProductName} while you were paying. We have INSTANTLY REFUNDED your money to your bank.` 
                 });
             } catch (refundErr) {
                 console.error("Razorpay Refund Error:", refundErr.message);
@@ -159,7 +176,7 @@ router.post('/verify-payment', protect, async (req, res) => {
     }
 });
 
-// 📈 VENDOR SALES
+
 router.get('/my-sales', protect, authorize('vendor'), async (req, res) => {
     try {
         const sales = await pool.query(
@@ -174,7 +191,6 @@ router.get('/my-sales', protect, authorize('vendor'), async (req, res) => {
     } catch (err) { res.status(500).json({ message: "Error fetching sales" }); }
 });
 
-// 📦 ROUTE 5: Manual Create Order (Backup)
 router.post('/create-order', protect, async (req, res) => {
     const { productId, address } = req.body;
     try {
@@ -198,7 +214,6 @@ router.post('/create-order', protect, async (req, res) => {
     } catch (err) { res.status(500).send("Order placement failed"); }
 });
 
-// 🚚 CUSTOMER ORDERS 
 router.get('/my-orders', protect, async (req, res) => {
     try {
         const orders = await pool.query(
@@ -226,7 +241,6 @@ router.post('/add-review', protect, async (req, res) => {
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// 🛡️ ADMIN: ALL ORDERS
 router.get('/admin-all', protect, adminOnly, async (req, res) => {
     try {
         const allOrders = await pool.query(
