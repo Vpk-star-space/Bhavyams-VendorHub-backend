@@ -116,93 +116,100 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
     let extractedAmount = null;
     let orderId = `ORD_DEMO_${Math.floor(10000 + Math.random() * 90000)}`;
 
-    if (typeof orderData === 'string') {
-        productName = orderData;
-    } 
-    else if (Array.isArray(orderData) && orderData.length > 0) {
-        productName = orderData.name || orderData.product_name || "Cart Items";
-        extractedAmount = orderData.reduce((total, item) => total + (Number(item.price || item.total_price || 0) * (item.quantity || 1)), 0);
-    } 
-    else if (typeof orderData === 'object' && orderData !== null) {
-        if (orderData.cartItems && orderData.cartItems.length > 0) {
-            productName = orderData.product_name || orderData.cartItems.map(i => i.name || i.product_name || "Product").join(', ');
-        } else if (orderData.order && (orderData.order.product_name || orderData.order.name)) {
-            productName = orderData.order.product_name || orderData.order.name;
-        } else {
-            productName = orderData.product_name || orderData.name || "Your Items";
+    try {
+        if (typeof orderData === 'string') {
+            productName = orderData;
+        } 
+        else if (Array.isArray(orderData) && orderData.length > 0) {
+            productName = orderData[0].name || orderData[0].product_name || "Cart Items";
+            extractedAmount = orderData.reduce((total, item) => total + (Number(item.price || item.total_price || 0) * (item.quantity || 1)), 0);
+        } 
+        else if (typeof orderData === 'object' && orderData !== null) {
+            // 1. Assign exact descriptive product text labels
+            if (orderData.product_name) {
+                productName = orderData.product_name;
+            } else if (orderData.cartItems && orderData.cartItems.length > 0) {
+                productName = orderData.cartItems.map(i => i.name || i.product_name || "Product").join(', ');
+            } else if (orderData.order && (orderData.order.product_name || orderData.order.name)) {
+                productName = orderData.order.product_name || orderData.order.name;
+            }
+            
+            // 2. Safely extract dynamic total numeric value strings
+            if (orderData.total_price !== undefined && orderData.total_price !== null) {
+                extractedAmount = orderData.total_price;
+            } else if (orderData.cartItems && orderData.cartItems.length > 0) {
+                const rawSubTotal = orderData.cartItems.reduce((total, item) => total + (Number(item.price || 0) * (item.quantity || 1)), 0);
+                extractedAmount = Math.round(rawSubTotal * 0.90);
+            } else {
+                extractedAmount = 
+                    orderData.finalTotal || 
+                    orderData.price || 
+                    orderData.amount ||
+                    (orderData.order ? (orderData.order.total_price || orderData.order.amount) : null);
+            }
+            
+            // 3. Extract order string identity attributes
+            if (orderData.order_id || orderData.id || orderData.razorpay_order_id) {
+                orderId = orderData.order_id || orderData.id || orderData.razorpay_order_id;
+            }
         }
-        
-        // 🚀 CRITICAL UPDATE: Prioritize explicit total_price passed directly from checkout context!
-        if (orderData.total_price !== undefined && orderData.total_price !== null) {
-            extractedAmount = orderData.total_price;
-        } else if (orderData.cartItems && orderData.cartItems.length > 0) {
-            // Backup calculation if route total is missing, applies your route's 10% discount logic
-            const rawSubTotal = orderData.cartItems.reduce((total, item) => total + (Number(item.price || 0) * (item.quantity || 1)), 0);
-            extractedAmount = Math.round(rawSubTotal * 0.90);
-        } else {
-            extractedAmount = 
-                orderData.finalTotal || 
-                orderData.price || 
-                orderData.amount ||
-                (orderData.order ? (orderData.order.total_price || orderData.order.amount) : null);
-        }
-        
-        if (orderData.order_id || orderData.id || orderData.razorpay_order_id) {
-            orderId = orderData.order_id || orderData.id || orderData.razorpay_order_id;
-        }
-    }
 
-    let amountStr = "0.00";
-    if (extractedAmount !== undefined && extractedAmount !== null) {
-        let numAmount = Number(extractedAmount);
-        if (!isNaN(numAmount) && numAmount !== 0) {
-            amountStr = numAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        // 🚀 CRITICAL STABILITY PATCH: Convert values safely using standard string casting
+        let amountStr = "0.00";
+        if (extractedAmount !== undefined && extractedAmount !== null) {
+            let numAmount = Number(extractedAmount);
+            if (!isNaN(numAmount) && numAmount !== 0) {
+                amountStr = numAmount.toFixed(2); // Prevents locale environment mapping script execution crashes
+            }
         }
-    }
 
-    const txnId = `TXN_DEMO_${Math.floor(100000 + Math.random() * 900000)}`; 
+        const txnId = `TXN_DEMO_${Math.floor(100000 + Math.random() * 900000)}`; 
 
-    const html = `
-        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;">
-            ${emailHeader}
-            <div style="padding: 30px;">
-                <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
-                    <h3 style="color: #991b1b; margin: 0; font-size: 16px;">Order Cancellation & Refund Notice</h3>
-                    <p style="color: #7f1d1d; margin: 5px 0 0 0; font-size: 14px;">[TEST MODE]: Simultaneous Checkout Encountered</p>
+        const html = `
+            <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;">
+                ${emailHeader}
+                <div style="padding: 30px;">
+                    <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+                        <h3 style="color: #991b1b; margin: 0; font-size: 16px;">Order Cancellation & Refund Notice</h3>
+                        <p style="color: #7f1d1d; margin: 5px 0 0 0; font-size: 14px;">[TEST MODE]: Simultaneous Checkout Encountered</p>
+                    </div>
+                    
+                    <p style="color: #475569; font-size: 16px;">Dear <b>${username}</b>,</p>
+                    <p style="color: #475569; font-size: 14px; line-height: 1.5;">We regret to inform you that your transaction could not be processed completely. Another customer completed payment for the final available stock of <b>${productName}</b> at the exact same moment.</p>
+                    <p style="color: #475569; font-size: 14px; line-height: 1.5;">Because the inventory became exhausted during checkout concurrency, our system automatically cancelled your request and rolled back the transaction safely.</p>
+                    
+                    <h4 style="color: #1e293b; margin-top: 25px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">TRANSACTION SUMMARY</h4>
+                    <table style="width: 100%; font-size: 14px; color: #334155; margin-bottom: 20px;">
+                        <tr>
+                            <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Order ID:</td>
+                            <td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 15px;">#${orderId}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Transaction ID:</td>
+                            <td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 15px;">${txnId}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Refunded Amount:</td>
+                            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #2874f0; font-size: 16px;">₹${amountStr}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Refund Status:</td>
+                            <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #16a34a;">Initiated / Auto-Reversed</td>
+                        </tr>
+                    </table>
+
+                    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; font-size: 13px; color: #475569; line-height: 1.4;">
+                        <strong>Refund Timeline Notice:</strong> The money has been safely released from our gateway node. It will reflect automatically inside your original payment source (UPI account or Bank Card account) within <strong>3-5 business working days</strong> depending on your banking branch.
+                    </div>
                 </div>
-                
-                <p style="color: #475569; font-size: 16px;">Dear <b>${username}</b>,</p>
-                <p style="color: #475569; font-size: 14px; line-height: 1.5;">We regret to inform you that your transaction could not be processed completely. Another customer completed payment for the final available stock of <b>${productName}</b> at the exact same moment.</p>
-                <p style="color: #475569; font-size: 14px; line-height: 1.5;">Because the inventory became exhausted during checkout concurrency, our system automatically cancelled your request and rolled back the transaction safely.</p>
-                
-                <h4 style="color: #1e293b; margin-top: 25px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">TRANSACTION SUMMARY</h4>
-                <table style="width: 100%; font-size: 14px; color: #334155; margin-bottom: 20px;">
-                    <tr>
-                        <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Order ID:</td>
-                        <td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 15px;">#${orderId}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Transaction ID:</td>
-                        <td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 15px;">${txnId}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Refunded Amount:</td>
-                        <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #2874f0; font-size: 16px;">₹${amountStr}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Refund Status:</td>
-                        <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #16a34a;">Initiated / Auto-Reversed</td>
-                    </tr>
-                </table>
+                ${emailFooter}
+            </div>`;
 
-                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; font-size: 13px; color: #475569; line-height: 1.4;">
-                    <strong>Refund Timeline Notice:</strong> The money has been safely released from our gateway node. It will reflect automatically inside your original payment source (UPI account or Bank Card account) within <strong>3-5 business working days</strong> depending on your banking branch.
-                </div>
-            </div>
-            ${emailFooter}
-        </div>`;
+        return await sendEmailViaAPI(userEmail, `Order Cancellation & Auto-Refund: #${orderId}`, html);
 
-    return sendEmailViaAPI(userEmail, `Order Cancellation & Auto-Refund: #${orderId}`, html);
+    } catch (criticalFunctionError) {
+        console.error("❌ Critical Internal sendRefundEmail Function Crash:", criticalFunctionError.message);
+    }
 };
 
 
