@@ -148,27 +148,35 @@ router.post('/verify-payment', protect, async (req, res) => {
         console.error("Verification Error:", err.message);
         
         // 💸 THE MAGIC AUTO-REFUND SYSTEM & EMAIL NOTIFICATION
-        if (razorpay_payment_id && err.message.includes('Insufficient stock')) {
-            try {
-                // 1. Issue the refund to their bank
-                await razorpay.payments.refund(razorpay_payment_id);
-                console.log(`✅ Successfully auto-refunded payment ${razorpay_payment_id}`);
-                
-                // 2. 🚀 Send the specific "Refund Initiated" Email!
-                if (userEmailForRefund) {
-                    sendRefundEmail(userEmailForRefund, failedProductName, userNameForRefund)
-                        .catch(emailErr => console.log("Refund Email Error:", emailErr.message));
-                }
-
-                // 3. Show error on frontend screen
-                return res.status(400).json({ 
-                    message: `Oops! Someone else bought the last ${failedProductName} while you were paying. We have INSTANTLY REFUNDED your money to your bank.` 
-                });
-            } catch (refundErr) {
-                console.error("Razorpay Refund Error:", refundErr.message);
-                return res.status(500).json({ message: "Item out of stock. Please contact support for your refund." });
-            }
+if (razorpay_payment_id && err.message.includes('Insufficient stock')) {
+    try {
+        // 1. Issue the refund to their bank
+        await razorpay.payments.refund(razorpay_payment_id);
+        console.log(`✅ Successfully auto-refunded payment ${razorpay_payment_id}`);
+        
+        // 2. 🚀 FIX: Pass a fully structured object instead of just a text string!
+        if (userEmailForRefund) {
+            // Find the item that caused the fault inside cartItems loop if possible
+            const structuralPayload = {
+                product_name: failedProductName,
+                order_id: razorpay_order_id || "PENDING",
+                cartItems: cartItems // Automatically calculates item accumulations
+            };
+            
+            sendRefundEmail(userEmailForRefund, structuralPayload, userNameForRefund)
+                .catch(emailErr => console.log("Refund Email Error:", emailErr.message));
         }
+
+        // 3. Show error on frontend screen
+        return res.status(400).json({ 
+            message: `Oops! Someone else bought the last ${failedProductName} while you were paying. We have INSTANTLY REFUNDED your money to your bank.` 
+        });
+    } catch (refundErr) {
+        console.error("Razorpay Refund Error:", refundErr.message);
+        return res.status(500).json({ message: "Item out of stock. Please contact support for your refund." });
+    }
+}
+
 
         res.status(500).json({ message: err.message || "Order verification failed." });
     } finally { 
