@@ -120,11 +120,10 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
         productName = orderData;
     } 
     else if (Array.isArray(orderData) && orderData.length > 0) {
-        productName = orderData[0].name || orderData[0].product_name || "Cart Items";
+        productName = orderData.name || orderData.product_name || "Cart Items";
         extractedAmount = orderData.reduce((total, item) => total + (Number(item.price || item.total_price || 0) * (item.quantity || 1)), 0);
     } 
     else if (typeof orderData === 'object' && orderData !== null) {
-        // Step 1: Assign correct descriptive text allocations
         if (orderData.cartItems && orderData.cartItems.length > 0) {
             productName = orderData.product_name || orderData.cartItems.map(i => i.name || i.product_name || "Product").join(', ');
         } else if (orderData.order && (orderData.order.product_name || orderData.order.name)) {
@@ -133,25 +132,26 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
             productName = orderData.product_name || orderData.name || "Your Items";
         }
         
-        // Step 2: Extract real financial numbers calculated dynamically out of cart arrays or items
-        if (orderData.cartItems && orderData.cartItems.length > 0) {
-            extractedAmount = orderData.cartItems.reduce((total, item) => total + (Number(item.price || 0) * (item.quantity || 1)), 0);
+        // 🚀 CRITICAL UPDATE: Prioritize explicit total_price passed directly from checkout context!
+        if (orderData.total_price !== undefined && orderData.total_price !== null) {
+            extractedAmount = orderData.total_price;
+        } else if (orderData.cartItems && orderData.cartItems.length > 0) {
+            // Backup calculation if route total is missing, applies your route's 10% discount logic
+            const rawSubTotal = orderData.cartItems.reduce((total, item) => total + (Number(item.price || 0) * (item.quantity || 1)), 0);
+            extractedAmount = Math.round(rawSubTotal * 0.90);
         } else {
             extractedAmount = 
-                orderData.total_price || 
                 orderData.finalTotal || 
                 orderData.price || 
                 orderData.amount ||
-                (orderData.order ? (orderData.order.total_price || orderData.order.amount || orderData.order.price) : null);
+                (orderData.order ? (orderData.order.total_price || orderData.order.amount) : null);
         }
         
-        // Step 3: Parse out valid sequence string references
         if (orderData.order_id || orderData.id || orderData.razorpay_order_id) {
             orderId = orderData.order_id || orderData.id || orderData.razorpay_order_id;
         }
     }
 
-    // Output transformation to neat decimal notation strings
     let amountStr = "0.00";
     if (extractedAmount !== undefined && extractedAmount !== null) {
         let numAmount = Number(extractedAmount);
@@ -204,6 +204,7 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
 
     return sendEmailViaAPI(userEmail, `Order Cancellation & Auto-Refund: #${orderId}`, html);
 };
+
 
 
 module.exports = {

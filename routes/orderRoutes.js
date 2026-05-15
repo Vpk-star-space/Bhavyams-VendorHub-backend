@@ -60,7 +60,8 @@ router.post('/checkout', protect, async (req, res) => {
 
 
 router.post('/verify-payment', protect, async (req, res) => {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, cartItems } = req.body;
+    // 🚀 FIXED: Added finalTotal to the destructured body parameters from the frontend request!
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, cartItems, finalTotal } = req.body;
     
     const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
     shasum.update(`${razorpay_order_id}|${razorpay_payment_id}`);
@@ -72,7 +73,6 @@ router.post('/verify-payment', protect, async (req, res) => {
 
     const client = await pool.connect();
     
-    // 🚀 We set these variables OUTSIDE the try block so the catch block can use them!
     let userEmailForRefund = null;
     let userNameForRefund = "Valued Customer";
     let failedProductName = "an item in your cart";
@@ -97,7 +97,6 @@ router.post('/verify-payment', protect, async (req, res) => {
                 throw new Error(`Product not found: ${item.id}`);
             }
 
-            // 🚀 Capture the actual product name in case it fails!
             failedProductName = prod.name;
 
             if (Number(prod.stock_count) < item.quantity) {
@@ -147,42 +146,39 @@ router.post('/verify-payment', protect, async (req, res) => {
         await client.query('ROLLBACK');
         console.error("Verification Error:", err.message);
         
-        // 💸 THE MAGIC AUTO-REFUND SYSTEM & EMAIL NOTIFICATION
-if (razorpay_payment_id && err.message.includes('Insufficient stock')) {
-    try {
-        // 1. Issue the refund to their bank
-        await razorpay.payments.refund(razorpay_payment_id);
-        console.log(`✅ Successfully auto-refunded payment ${razorpay_payment_id}`);
-        
-        // 2. 🚀 FIX: Pass a fully structured object instead of just a text string!
-        if (userEmailForRefund) {
-            // Find the item that caused the fault inside cartItems loop if possible
-            const structuralPayload = {
-                product_name: failedProductName,
-                order_id: razorpay_order_id || "PENDING",
-                cartItems: cartItems // Automatically calculates item accumulations
-            };
-            
-            sendRefundEmail(userEmailForRefund, structuralPayload, userNameForRefund)
-                .catch(emailErr => console.log("Refund Email Error:", emailErr.message));
+        if (razorpay_payment_id && err.message.includes('Insufficient stock')) {
+            try {
+                await razorpay.payments.refund(razorpay_payment_id);
+                console.log(`✅ Successfully auto-refunded payment ${razorpay_payment_id}`);
+                
+                if (userEmailForRefund) {
+                    // 🚀 FIXED: Pass the real final total payload directly to the email template helper!
+                    const structuralPayload = {
+                        product_name: failedProductName,
+                        order_id: razorpay_order_id,
+                        total_price: finalTotal || null, // Captures exact amount customer paid
+                        cartItems: cartItems
+                    };
+                    
+                    sendRefundEmail(userEmailForRefund, structuralPayload, userNameForRefund)
+                        .catch(emailErr => console.log("Refund Email Error:", emailErr.message));
+                }
+
+                return res.status(400).json({ 
+                    message: `Oops! Someone else bought the last ${failedProductName} while you were paying. We have INSTANTLY REFUNDED your money to your bank.` 
+                });
+            } catch (refundErr) {
+                console.error("Razorpay Refund Error:", refundErr.message);
+                return res.status(500).json({ message: "Item out of stock. Please contact support for your refund." });
+            }
         }
-
-        // 3. Show error on frontend screen
-        return res.status(400).json({ 
-            message: `Oops! Someone else bought the last ${failedProductName} while you were paying. We have INSTANTLY REFUNDED your money to your bank.` 
-        });
-    } catch (refundErr) {
-        console.error("Razorpay Refund Error:", refundErr.message);
-        return res.status(500).json({ message: "Item out of stock. Please contact support for your refund." });
-    }
-}
-
 
         res.status(500).json({ message: err.message || "Order verification failed." });
     } finally { 
         client.release(); 
     }
 });
+
 
 
 router.get('/my-sales', protect, authorize('vendor'), async (req, res) => {
