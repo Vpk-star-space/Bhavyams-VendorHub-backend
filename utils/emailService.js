@@ -108,20 +108,28 @@ const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Cus
     return sendEmailViaAPI(userEmail, "Order Delivered! 🚚", html);
 };
 
-// 🚀 UPGRADED: SMART FALLBACKS (No Backend Changes Needed)
-const sendRefundEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
+// 🚀 ULTIMATE BUG FIX: Deep Parsing for the Refund Email
+const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer") => {
     
-    // SMART PARSER: Automatically figures out the price and name from whatever the backend sent
-    let productName = "Your Item";
+    // Default values if the backend fails completely
+    let productName = "Your Items";
     let amount = "0.00";
-    let orderId = "N/A (Failed prior to generation)";
+    let orderId = "Failed at Checkout";
 
-    if (typeof orderDetails === 'string') {
-        productName = orderDetails;
-    } else if (orderDetails) {
-        productName = orderDetails.product_name || orderDetails.name || "Your Item";
-        amount = orderDetails.total_price || orderDetails.price || orderDetails.amount || "0.00";
-        orderId = orderDetails.id || orderDetails.order_id || "N/A (Failed prior to generation)";
+    // 🧠 THE SMART PARSER: Figures out the data even if the DB rejected the order!
+    if (typeof orderData === 'string') {
+        productName = orderData;
+    } 
+    // Scenario 1: Backend passed the Cart Array (Most likely on failure)
+    else if (Array.isArray(orderData) && orderData.length > 0) {
+        productName = orderData[0].name || orderData[0].product_name || "Cart Items";
+        amount = orderData.reduce((total, item) => total + (Number(item.price) * (item.quantity || 1)), 0).toString();
+    } 
+    // Scenario 2: Backend passed a partial object
+    else if (typeof orderData === 'object' && orderData !== null) {
+        productName = orderData.product_name || orderData.name || "Your Item";
+        amount = orderData.total_price || orderData.price || orderData.amount || "0.00";
+        orderId = orderData.id || orderData.order_id || orderData.razorpay_order_id || "Failed at Checkout";
     }
 
     const txnId = `TXN_DEMO_${Math.floor(100000 + Math.random() * 900000)}`; 
