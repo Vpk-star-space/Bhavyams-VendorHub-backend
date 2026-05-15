@@ -108,13 +108,23 @@ const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Cus
     return sendEmailViaAPI(userEmail, "Order Delivered! 🚚", html);
 };
 
-// 🚀 UPGRADED: OUT OF STOCK REFUND EMAIL (PROFESSIONAL E-COMMERCE STANDARD)
+// 🚀 UPGRADED: SMART FALLBACKS (No Backend Changes Needed)
 const sendRefundEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
-    // Graceful handling depending on if you pass a string or the full order object
-    const productName = typeof orderDetails === 'string' ? orderDetails : orderDetails.product_name;
-    const orderId = orderDetails.id || orderDetails.order_id || 'PENDING';
-    const amount = orderDetails.total_price || '0.00';
-    const txnId = `TXN_DEMO_${Math.floor(100000 + Math.random() * 900000)}`; // Simulated Transaction ID
+    
+    // SMART PARSER: Automatically figures out the price and name from whatever the backend sent
+    let productName = "Your Item";
+    let amount = "0.00";
+    let orderId = "N/A (Failed prior to generation)";
+
+    if (typeof orderDetails === 'string') {
+        productName = orderDetails;
+    } else if (orderDetails) {
+        productName = orderDetails.product_name || orderDetails.name || "Your Item";
+        amount = orderDetails.total_price || orderDetails.price || orderDetails.amount || "0.00";
+        orderId = orderDetails.id || orderDetails.order_id || "N/A (Failed prior to generation)";
+    }
+
+    const txnId = `TXN_DEMO_${Math.floor(100000 + Math.random() * 900000)}`; 
 
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
@@ -146,8 +156,8 @@ const sendRefundEmail = async (userEmail, orderDetails, username = "Valued Custo
                 <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-top: 10px;">
                     <table style="width: 100%; font-size: 14px; color: #333333;">
                         <tr>
-                            <td style="padding-bottom: 8px; color: #64748b;">Order ID:</td>
-                            <td style="padding-bottom: 8px; font-weight: bold; text-align: right;">#${orderId}</td>
+                            <td style="padding-bottom: 8px; color: #64748b;">Attempted Order ID:</td>
+                            <td style="padding-bottom: 8px; font-weight: bold; text-align: right;">${orderId}</td>
                         </tr>
                         <tr>
                             <td style="padding-bottom: 8px; color: #64748b;">Transaction ID:</td>
@@ -190,7 +200,7 @@ const sendRefundEmail = async (userEmail, orderDetails, username = "Valued Custo
             ${emailFooter}
         </div>`;
         
-    return sendEmailViaAPI(userEmail, `Important: Order Cancellation & Immediate Refund Initiated for Order #${orderId}`, html);
+    return sendEmailViaAPI(userEmail, `Important: Order Cancellation & Immediate Refund Initiated for ${productName}`, html);
 };
 
 const sendWelcomeEmail = async (userEmail, username, role) => {
