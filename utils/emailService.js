@@ -17,7 +17,7 @@ const emailHeader = `
 
 const emailFooter = `
     <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; border-top: 1px solid #e2e8f0; margin-top: 20px;">
-        <p style="color: #64748b; font-size: 12px; margin: 0;">System Engineered by Venkata Pavan Kumar</p>
+        <p style="color: #64748b; font-size: 12px; margin: 0;">System Engineered by A. Venkata Pavan Kumar</p>
         <p style="color: #94a3b8; font-size: 10px; margin-top: 5px;">&copy; 2026 Bhavyams VendorHub. All Rights Reserved.</p>
     </div>
 `;
@@ -108,34 +108,89 @@ const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Cus
     return sendEmailViaAPI(userEmail, "Order Delivered! 🚚", html);
 };
 
-// 🚀 NEW: OUT OF STOCK REFUND EMAIL
-const sendRefundEmail = async (userEmail, productName, username = "Valued Customer") => {
+// 🚀 UPGRADED: OUT OF STOCK REFUND EMAIL (PROFESSIONAL E-COMMERCE STANDARD)
+const sendRefundEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
+    // Graceful handling depending on if you pass a string or the full order object
+    const productName = typeof orderDetails === 'string' ? orderDetails : orderDetails.product_name;
+    const orderId = orderDetails.id || orderDetails.order_id || 'PENDING';
+    const amount = orderDetails.total_price || '0.00';
+    const txnId = `TXN_DEMO_${Math.floor(100000 + Math.random() * 900000)}`; // Simulated Transaction ID
+
     const html = `
-        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
+        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
             ${emailHeader}
-            <div style="padding: 30px; text-align: center; background-color: #ffffff;">
-                <h2 style="color: #ef4444;">Refund Initiated 💸</h2>
-                <p style="color: #475569; font-size: 16px; text-align: left;">Hi <b>${username}</b>,</p>
-                <p style="color: #475569; font-size: 16px; text-align: left;">
-                    We are so sorry, but another customer purchased the last <b>${productName}</b> while your payment was processing.
-                </p>
+            <div style="padding: 30px; background-color: #ffffff;">
                 
-                <div style="background: #fee2e2; border: 1px solid #f87171; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: left;">
-                    <p style="color: #991b1b; margin: 0; font-weight: bold;">✅ Instant Refund Processed</p>
-                    <p style="color: #991b1b; margin: 5px 0 0 0; font-size: 14px;">We have automatically reversed the charge. The money will reflect in your original payment method in 3-5 business days.</p>
-                </div>
-
-                <p style="color: #475569; font-size: 16px; text-align: left;">
-                    Keep an eye on the store—our vendors restock frequently!
+                <h2 style="color: #333333; margin-top: 0; font-size: 20px; border-bottom: 2px solid #f0f0f0; padding-bottom: 15px;">
+                    Order Cancellation & Refund
+                </h2>
+                
+                <p style="color: #333333; font-size: 15px; margin-top: 20px;">Dear <b>${username}</b>,</p>
+                
+                <p style="color: #555555; font-size: 14px; line-height: 1.6;">
+                    We are writing to inform you that we could not fulfill your order for <b>${productName}</b> due to a simultaneous checkout conflict.
                 </p>
 
-                <div style="margin-top: 30px;">
-                    <a href="${frontendUrl}" style="background-color: #2874f0; color: white; padding: 12px 30px; text-decoration: none; font-weight: bold; border-radius: 3px; display: inline-block;">CONTINUE SHOPPING</a>
+                <h3 style="color: #333333; font-size: 16px; margin-top: 25px;">What Happened?</h3>
+                <p style="color: #555555; font-size: 14px; line-height: 1.6;">
+                    Our system received two successful payments for the final available unit at the exact same fraction of a second. Unfortunately, the other transaction went through just ahead of yours, causing the item to instantly go out of stock before your order could be allocated. We sincerely apologize for this inconvenience.
+                </p>
+
+                <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 15px; margin: 20px 0;">
+                    <p style="margin: 0; color: #b45309; font-size: 13px;">
+                        <strong>TEST MODE NOTICE:</strong> Since this is a test environment, no real money was deducted. This email serves to demonstrate the automated refund flow architecture.
+                    </p>
                 </div>
+
+                <h3 style="color: #333333; font-size: 16px; margin-top: 25px;">Refund Details</h3>
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin-top: 10px;">
+                    <table style="width: 100%; font-size: 14px; color: #333333;">
+                        <tr>
+                            <td style="padding-bottom: 8px; color: #64748b;">Order ID:</td>
+                            <td style="padding-bottom: 8px; font-weight: bold; text-align: right;">#${orderId}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding-bottom: 8px; color: #64748b;">Transaction ID:</td>
+                            <td style="padding-bottom: 8px; font-weight: bold; text-align: right;">${txnId}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding-bottom: 8px; color: #64748b;">Paid Amount:</td>
+                            <td style="padding-bottom: 8px; font-weight: bold; color: #2874f0; text-align: right;">₹${amount}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding-bottom: 8px; color: #64748b;">Refund Method:</td>
+                            <td style="padding-bottom: 8px; text-align: right;">Original Payment Method (Test Gateway)</td>
+                        </tr>
+                        <tr>
+                            <td style="padding-top: 8px; color: #64748b; border-top: 1px dashed #cbd5e1;">Status:</td>
+                            <td style="padding-top: 8px; font-weight: bold; color: #16a34a; text-align: right;">Refund Processed Successfully</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <h3 style="color: #333333; font-size: 16px; margin-top: 30px;">When will you get your money back?</h3>
+                <p style="color: #555555; font-size: 14px; line-height: 1.6;">
+                    The refund was triggered automatically by our gateway. Depending on your bank's processing cycle, the funds will reflect in your account within:
+                </p>
+                <ul style="color: #555555; font-size: 14px; line-height: 1.6; padding-left: 20px;">
+                    <li><b>UPI / Wallets:</b> 24 to 48 Hours</li>
+                    <li><b>Net Banking / Cards:</b> 3 to 5 Business Days</li>
+                </ul>
+
+                <p style="color: #555555; font-size: 14px; line-height: 1.6; margin-top: 20px;">
+                    You do not need to take any action. If you have any questions, please reply directly to this email.
+                </p>
+
+                <p style="color: #333333; font-size: 14px; margin-top: 30px;">
+                    Warm regards,<br>
+                    <strong>The Bhavyams Hub Team</strong>
+                </p>
+
             </div>
             ${emailFooter}
         </div>`;
-    return sendEmailViaAPI(userEmail, "Action Required: Order Refunded (Out of Stock)", html);
+        
+    return sendEmailViaAPI(userEmail, `Important: Order Cancellation & Immediate Refund Initiated for Order #${orderId}`, html);
 };
 
 const sendWelcomeEmail = async (userEmail, username, role) => {
@@ -154,5 +209,4 @@ const sendWelcomeEmail = async (userEmail, username, role) => {
     return sendEmailViaAPI(userEmail, "Welcome to Bhavyams Hub!", html);
 };
 
-// 🚀 FIX: Don't forget to export the new function!
 module.exports = { sendOrderEmail, sendDeliveryEmail, sendOTPEmail, sendWelcomeEmail, sendRefundEmail };
