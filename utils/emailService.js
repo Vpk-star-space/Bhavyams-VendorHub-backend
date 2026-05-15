@@ -111,25 +111,34 @@ const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Cus
 // 🚀 ULTIMATE BUG FIX: Deep Parsing for the Refund Email
 const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer") => {
     
-    // Default values if the backend fails completely
+    // Default fallback values
     let productName = "Your Items";
     let amount = "0.00";
-    let orderId = "Failed at Checkout";
+    let orderId = `ORD_DEMO_${Math.floor(10000 + Math.random() * 90000)}`; // Generates a professional fallback ID
 
-    // 🧠 THE SMART PARSER: Figures out the data even if the DB rejected the order!
+    // 🧠 THE SMART PARSER: Figures out data from the Cart payload ({cartItems, finalTotal})
     if (typeof orderData === 'string') {
         productName = orderData;
     } 
-    // Scenario 1: Backend passed the Cart Array (Most likely on failure)
     else if (Array.isArray(orderData) && orderData.length > 0) {
         productName = orderData[0].name || orderData[0].product_name || "Cart Items";
         amount = orderData.reduce((total, item) => total + (Number(item.price) * (item.quantity || 1)), 0).toString();
     } 
-    // Scenario 2: Backend passed a partial object
     else if (typeof orderData === 'object' && orderData !== null) {
-        productName = orderData.product_name || orderData.name || "Your Item";
-        amount = orderData.total_price || orderData.price || orderData.amount || "0.00";
-        orderId = orderData.id || orderData.order_id || orderData.razorpay_order_id || "Failed at Checkout";
+        // Look for the exact payload sent by your Cart.js!
+        if (orderData.cartItems && orderData.cartItems.length > 0) {
+            productName = orderData.cartItems.map(i => i.name).join(', ');
+        } else {
+            productName = orderData.product_name || orderData.name || "Your Items";
+        }
+        
+        // Find the price (Checking for finalTotal sent by Cart.js)
+        amount = orderData.finalTotal || orderData.total_price || orderData.price || orderData.amount || "0.00";
+        
+        // Grab real Order ID if it actually exists
+        if (orderData.id || orderData.order_id || orderData.razorpay_order_id) {
+            orderId = orderData.id || orderData.order_id || orderData.razorpay_order_id;
+        }
     }
 
     const txnId = `TXN_DEMO_${Math.floor(100000 + Math.random() * 900000)}`; 
@@ -165,7 +174,7 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
                     <table style="width: 100%; font-size: 14px; color: #333333;">
                         <tr>
                             <td style="padding-bottom: 8px; color: #64748b;">Attempted Order ID:</td>
-                            <td style="padding-bottom: 8px; font-weight: bold; text-align: right;">${orderId}</td>
+                            <td style="padding-bottom: 8px; font-weight: bold; text-align: right;">#${orderId}</td>
                         </tr>
                         <tr>
                             <td style="padding-bottom: 8px; color: #64748b;">Transaction ID:</td>
