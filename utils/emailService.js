@@ -109,8 +109,12 @@ const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Cus
 };
 
 const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer") => {
+    // Console log layout structure for visibility during integration steps
+    console.log("=== sendRefundEmail Payload Trace ===");
+    console.log(JSON.stringify(orderData, null, 2));
+
     let productName = "Your Items";
-    let amount = "0.00";
+    let extractedAmount = null;
     let orderId = `ORD_DEMO_${Math.floor(10000 + Math.random() * 90000)}`;
 
     if (typeof orderData === 'string') {
@@ -118,20 +122,45 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
     } 
     else if (Array.isArray(orderData) && orderData.length > 0) {
         productName = orderData[0].name || orderData[0].product_name || "Cart Items";
-        amount = orderData.reduce((total, item) => total + (Number(item.price || item.total_price || 0) * (item.quantity || 1)), 0).toString();
+        extractedAmount = orderData.reduce((total, item) => total + (Number(item.price || item.total_price || 0) * (item.quantity || 1)), 0);
     } 
     else if (typeof orderData === 'object' && orderData !== null) {
+        // Step 1: Handle nested collections vs direct names
         if (orderData.cartItems && orderData.cartItems.length > 0) {
             productName = orderData.cartItems.map(i => i.name || i.product_name).join(', ');
+        } else if (orderData.order && (orderData.order.product_name || orderData.order.name)) {
+            productName = orderData.order.product_name || orderData.order.name;
         } else {
             productName = orderData.product_name || orderData.name || "Your Items";
         }
         
-        // Fixed extraction fallback to catch flat total_price arguments
-        amount = orderData.total_price || orderData.finalTotal || orderData.price || orderData.amount || "0.00";
+        // Step 2: Advanced deep-layered checking strategy for structural numbers
+        extractedAmount = 
+            orderData.total_price || 
+            orderData.finalTotal || 
+            orderData.price || 
+            orderData.amount ||
+            (orderData.order ? (orderData.order.total_price || orderData.order.amount || orderData.order.price) : null) ||
+            (orderData.payment ? (orderData.payment.amount || orderData.payment.total) : null);
         
+        // Step 3: Parse out valid identity IDs safely
         if (orderData.order_id || orderData.id || orderData.razorpay_order_id) {
             orderId = orderData.order_id || orderData.id || orderData.razorpay_order_id;
+        } else if (orderData.order && orderData.order.order_id) {
+            orderId = orderData.order.order_id;
+        }
+    }
+
+    // Process amount validation formatting
+    let amountStr = "0.00";
+    if (extractedAmount !== undefined && extractedAmount !== null) {
+        let numAmount = Number(extractedAmount);
+        // Protects against gateway values sent in paise (like Razorpay Indian fractional values)
+        if (numAmount > 50000 && (!orderData.total_price)) { 
+            numAmount = numAmount / 100;
+        }
+        if (!isNaN(numAmount) && numAmount !== 0) {
+            amountStr = numAmount.toFixed(2);
         }
     }
 
@@ -147,7 +176,7 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
                 </div>
                 
                 <p style="color: #475569; font-size: 16px;">Dear <b>${username}</b>,</p>
-                <p style="color: #475569; font-size: 14px; line-height: 1.5;"> We regret to inform you that your transaction could not be processed completely. Another customer completed payment for the final available stock of <b>${productName}</b> at the exact same moment.</p>
+                <p style="color: #475569; font-size: 14px; line-height: 1.5;">We regret to inform you that your transaction could not be processed completely. Another customer completed payment for the final available stock of <b>${productName}</b> at the exact same moment.</p>
                 <p style="color: #475569; font-size: 14px; line-height: 1.5;">Because the inventory became exhausted during checkout concurrency, our system automatically cancelled your request and rolled back the transaction safely.</p>
                 
                 <h4 style="color: #1e293b; margin-top: 25px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">TRANSACTION SUMMARY</h4>
@@ -162,7 +191,7 @@ const sendRefundEmail = async (userEmail, orderData, username = "Valued Customer
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Refunded Amount:</td>
-                        <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #2874f0; font-size: 16px;">₹${amount}</td>
+                        <td style="padding: 6px 0; text-align: right; font-weight: bold; color: #2874f0; font-size: 16px;">₹${amountStr}</td>
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Refund Status:</td>
