@@ -7,6 +7,7 @@ const orderRoutes = require('./routes/orderRoutes');
 const cors = require('cors');
 const path = require('path');
 const cartRoutes = require('./routes/cartRoutes');
+const supportRoutes = require('./routes/supportRoutes'); 
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api/support', supportRoutes);
 
 app.get('/', (req, res) => {
     res.send('Bhavyams VendorHub API is running smoothly on Render !!!');
