@@ -10,12 +10,12 @@ router.post('/chat', protect, async (req, res) => {
     let reply = "";
 
     try {
-        // 🚀 THE EASTER EGG (Works from anywhere!)
-        if (lowerMsg.includes("real") || lowerMsg.includes("fake") || lowerMsg.includes("project")) {
+        // 🚀 THE EASTER EGG
+        if (lowerMsg.includes("real") || lowerMsg.includes("fake") || lowerMsg.includes("project") && !lowerMsg.includes("other projects")) {
             return res.json({ reply: `🎓 **Developer Note:** This is a highly advanced, full-stack e-commerce system engineered by **A. Venkata Pavan Kumar**!\n\nWhile this interface behaves exactly like a real platform, it is currently running in test mode.` });
         }
 
-        // 🌐 GLOBAL MODE: If no orderId is passed (e.g., they are on the Home Page)
+        // 🌐 GLOBAL MODE
         if (!orderId || orderId === "Unknown") {
             const potentialId = lowerMsg.match(/\d+/);
             if (potentialId) {
@@ -27,7 +27,7 @@ router.post('/chat', protect, async (req, res) => {
             return res.json({ reply: `I am **Subhams Support AI**. To help you best, please navigate to **My Orders** and click on the specific order you need help with!` });
         }
 
-        // 🕵️ GET REAL-TIME DATA FROM DATABASE (If orderId exists)
+        // 🕵️ GET REAL-TIME DATA FROM DATABASE
         const orderRes = await pool.query(
             `SELECT o.status, o.created_at, o.total_price, p.name 
              FROM orders o 
@@ -42,7 +42,7 @@ router.post('/chat', protect, async (req, res) => {
 
         const order = orderRes.rows[0];
 
-        // 2. 🧠 THE BRAIN: Professional Flipkart-Style Responses
+        // 2. 🧠 THE BRAIN RESPONSES
         
         // --- TRACKING ---
         if (lowerMsg === "track order status" || lowerMsg.includes("track") || lowerMsg.includes("where is my order") || (lowerMsg.includes("order") && lowerMsg.includes("status"))) {
@@ -74,8 +74,12 @@ router.post('/chat', protect, async (req, res) => {
             }
         }
         // --- CONTACT ADMIN ---
-        else if (lowerMsg === "something else / contact admin" || lowerMsg === "contact human admin" || lowerMsg.includes("contact") || lowerMsg.includes("admin") || lowerMsg.includes("human") || lowerMsg.includes("mail") || lowerMsg.includes("email") || lowerMsg.includes("support")) {
+        else if (lowerMsg === "contact human admin" || lowerMsg.includes("contact") || lowerMsg.includes("admin") || lowerMsg.includes("human") || lowerMsg.includes("mail") || lowerMsg.includes("email") || lowerMsg.includes("support")) {
             reply = `I understand you need to speak with our human support team. 🎧\n\nPlease click the button below to email our administration. **Our admin team will contact you back within a few hours!**\n\n<a href="mailto:venkatapavankumar36@gmail.com?subject=Support%20Request%20for%20Order%20%23${orderId}" style="display: block; margin: 12px 0; padding: 12px 16px; background-color: #fb641b; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">✉️ CLICK TO CONTACT ADMIN</a>\n\n*(Your Order ID **#${orderId}** will automatically be included in your email)*`;
+        }
+        // 🟢 NEW: OUR OTHER PROJECTS (With beautifully formatted links)
+        else if (lowerMsg === "our other projects" || lowerMsg.includes("other projects") || lowerMsg.includes("subhams app")) {
+            reply = `I'd love to show you! Check out these other amazing platforms built by **A. Venkata Pavan Kumar**:\n\n🌐 <a href="https://subhams-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams E-Commerce App</a>\n\n🤖 <a href="https://subhams-agent-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block;">Subhams AI Agent</a>\n\nClick the links above to explore them in a new tab!`;
         }
         // --- VIEW MAIN MENU / GREETING ---
         else if (lowerMsg === "view main menu" || lowerMsg === "hi" || lowerMsg === "hello" || lowerMsg === "hey" || lowerMsg === "help") {
