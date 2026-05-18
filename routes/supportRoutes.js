@@ -78,13 +78,26 @@ router.post('/chat', protect, async (req, res) => {
             reply = `I understand you need to speak with our human support team. 🎧\n\nPlease click the button below to email our administration. **Our admin team will contact you back within a few hours!**\n\n<a href="mailto:venkatapavankumar36@gmail.com?subject=Support%20Request%20for%20Order%20%23${orderId}" style="display: block; margin: 12px 0; padding: 12px 16px; background-color: #fb641b; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">✉️ CLICK TO CONTACT ADMIN</a>\n\n*(Your Order ID **#${orderId}** will automatically be included in your email)*`;
         }
         // 🟢 NEW: OUR OTHER PROJECTS (The Masterpiece Portfolio)
-        else if (lowerMsg === "our other projects" || lowerMsg.includes("other projects") || lowerMsg.includes("subhams app") || lowerMsg.includes("pmms") || lowerMsg.includes("xerox")) {
-            reply = `I'd love to show you! Check out these software masterpieces engineered by **A. Venkata Pavan Kumar**:\n\n` + 
-                    
-                    `💰 <a href="#" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams PMMS (Personal Money Manage System)</a>\n\n` +
-                    `🖨️ <a href="#" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 12px;">Subhams Secure Xerox</a>\n\n` +
-                    `Click the links above to explore these full-stack masterpieces in a new tab!`;
-        }
+       // --- OTHER PROJECTS / PORTFOLIO MENU ---
+else if (lowerMsg === "our other projects" || lowerMsg.includes("other projects") || lowerMsg.includes("subhams app") || lowerMsg.includes("pmms") || lowerMsg.includes("xerox") || lowerMsg.includes("portfolio")) {
+    reply = `I'd love to show you! 🚀\n\nCheck out these full-stack software masterpieces engineered by **A. Venkata Pavan Kumar**:\n\n` + 
+            
+            // Subhams PMMS Card
+            `<div style="padding: 10px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">` +
+            `💰 <a href="https://subhams-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: none; font-size: 15px;">Subhams PMMS</a><br/>` +
+            `<span style="color: #64748b; font-size: 12px; display: block; margin-top: 4px;">A secure Personal Money Management System built to track finances and investments.</span>` +
+            `</div>` +
+            
+            // Subhams Secure Xerox Card
+            `<div style="padding: 10px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">` +
+            `🖨️ <a href="https://subhams-vpk.vercel.app/xerox" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: none; font-size: 15px;">Subhams Secure Xerox</a><br/>` +
+            `<span style="color: #64748b; font-size: 12px; display: block; margin-top: 4px;">An automated, scalable document printing network and management system.</span>` +
+            `</div>` +
+
+           
+            
+            `Click any link above to explore these applications in a new tab!`;
+}
         // --- VIEW MAIN MENU / GREETING ---
         else if (lowerMsg === "view main menu" || lowerMsg === "hi" || lowerMsg === "hello" || lowerMsg === "hey" || lowerMsg === "help") {
             reply = `Hello again! How else can I assist you with Order **#${orderId}** today?`;
