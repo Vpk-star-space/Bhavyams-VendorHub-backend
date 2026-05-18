@@ -80,8 +80,7 @@ router.post('/chat', protect, async (req, res) => {
         // 🟢 NEW: OUR OTHER PROJECTS (The Masterpiece Portfolio)
         else if (lowerMsg === "our other projects" || lowerMsg.includes("other projects") || lowerMsg.includes("subhams app") || lowerMsg.includes("pmms") || lowerMsg.includes("xerox")) {
             reply = `I'd love to show you! Check out these software masterpieces engineered by **A. Venkata Pavan Kumar**:\n\n` + 
-                    `🌐 <a href="https://subhams-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams E-Commerce App</a>\n\n` +
-                    `🤖 <a href="https://subhams-agent-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams AI Agent</a>\n\n` +
+                    
                     `💰 <a href="#" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams PMMS (Personal Money Manage System)</a>\n\n` +
                     `🖨️ <a href="#" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 12px;">Subhams Secure Xerox</a>\n\n` +
                     `Click the links above to explore these full-stack masterpieces in a new tab!`;
