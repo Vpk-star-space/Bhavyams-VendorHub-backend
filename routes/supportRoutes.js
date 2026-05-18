@@ -77,9 +77,14 @@ router.post('/chat', protect, async (req, res) => {
         else if (lowerMsg === "contact human admin" || lowerMsg.includes("contact") || lowerMsg.includes("admin") || lowerMsg.includes("human") || lowerMsg.includes("mail") || lowerMsg.includes("email") || lowerMsg.includes("support")) {
             reply = `I understand you need to speak with our human support team. 🎧\n\nPlease click the button below to email our administration. **Our admin team will contact you back within a few hours!**\n\n<a href="mailto:venkatapavankumar36@gmail.com?subject=Support%20Request%20for%20Order%20%23${orderId}" style="display: block; margin: 12px 0; padding: 12px 16px; background-color: #fb641b; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">✉️ CLICK TO CONTACT ADMIN</a>\n\n*(Your Order ID **#${orderId}** will automatically be included in your email)*`;
         }
-        // 🟢 NEW: OUR OTHER PROJECTS (With beautifully formatted links)
-        else if (lowerMsg === "our other projects" || lowerMsg.includes("other projects") || lowerMsg.includes("subhams app")) {
-            reply = `I'd love to show you! Check out these other amazing platforms built by **A. Venkata Pavan Kumar**:\n\n🌐 <a href="https://subhams-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams E-Commerce App</a>\n\n🤖 <a href="https://subhams-agent-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block;">Subhams AI Agent</a>\n\nClick the links above to explore them in a new tab!`;
+        // 🟢 NEW: OUR OTHER PROJECTS (The Masterpiece Portfolio)
+        else if (lowerMsg === "our other projects" || lowerMsg.includes("other projects") || lowerMsg.includes("subhams app") || lowerMsg.includes("pmms") || lowerMsg.includes("xerox")) {
+            reply = `I'd love to show you! Check out these software masterpieces engineered by **A. Venkata Pavan Kumar**:\n\n` + 
+                    `🌐 <a href="https://subhams-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams E-Commerce App</a>\n\n` +
+                    `🤖 <a href="https://subhams-agent-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams AI Agent</a>\n\n` +
+                    `💰 <a href="#" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 8px;">Subhams PMMS (Personal Money Manage System)</a>\n\n` +
+                    `🖨️ <a href="#" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: underline; display: block; margin-bottom: 12px;">Subhams Secure Xerox</a>\n\n` +
+                    `Click the links above to explore these full-stack masterpieces in a new tab!`;
         }
         // --- VIEW MAIN MENU / GREETING ---
         else if (lowerMsg === "view main menu" || lowerMsg === "hi" || lowerMsg === "hello" || lowerMsg === "hey" || lowerMsg === "help") {
