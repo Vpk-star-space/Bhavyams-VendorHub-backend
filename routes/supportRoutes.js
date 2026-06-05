@@ -75,7 +75,7 @@ router.post('/chat', protect, async (req, res) => {
         }
         // --- CONTACT ADMIN ---
         else if (lowerMsg === "contact human admin" || lowerMsg.includes("contact") || lowerMsg.includes("admin") || lowerMsg.includes("human") || lowerMsg.includes("mail") || lowerMsg.includes("email") || lowerMsg.includes("support")) {
-            reply = `I understand you need to speak with our human support team. 🎧\n\nPlease click the button below to email our administration. **Our admin team will contact you back within a few hours!**\n\n<a href="mailto:venkatapavankumar36@gmail.com?subject=Support%20Request%20for%20Order%20%23${orderId}" style="display: block; margin: 12px 0; padding: 12px 16px; background-color: #fb641b; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">✉️ CLICK TO CONTACT ADMIN</a>\n\n*(Your Order ID **#${orderId}** will automatically be included in your email)*`;
+            reply = `I understand you need to speak with our human support team. 🎧\n\nPlease click the button below to email our administration. **Our admin team will contact you back within a few hours!**\n\n<a href="mailto: pavanvenkat63@gmail.com?subject=Support%20Request%20for%20Order%20%23${orderId}" style="display: block; margin: 12px 0; padding: 12px 16px; background-color: #fb641b; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">✉️ CLICK TO CONTACT ADMIN</a>\n\n*(Your Order ID **#${orderId}** will automatically be included in your email)*`;
         }
         // 🟢 NEW: OUR OTHER PROJECTS (The Masterpiece Portfolio)
        // --- OTHER PROJECTS / PORTFOLIO MENU ---
