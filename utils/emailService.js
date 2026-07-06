@@ -4,7 +4,7 @@ require('dotenv').config();
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 const API_KEY = process.env.BREVO_API_KEY; 
 const SENDER_EMAIL = process.env.EMAIL_USER; 
-const frontendUrl = process.env.FRONTEND_URL || 'https://bhavyams-vendor-hub-vpk.vercel.app';
+const frontendUrl = process.env.FRONTEND_URL || 'https://bhavyams.subhamsnetworks.in/';
 
 const emailHeader = `
     <div style="background-color: #2874f0; padding: 25px; text-align: center; border-radius: 8px 8px 0 0;">
