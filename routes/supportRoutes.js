@@ -84,13 +84,13 @@ else if (lowerMsg === "our other projects" || lowerMsg.includes("other projects"
             
             // Subhams PMMS Card
             `<div style="padding: 10px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">` +
-            `💰 <a href="https://subhams-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: none; font-size: 15px;">Subhams PMMS</a><br/>` +
+            `💰 <a href="https://pmms.subhamsnetworks.in/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: none; font-size: 15px;">Subhams PMMS</a><br/>` +
             `<span style="color: #64748b; font-size: 12px; display: block; margin-top: 4px;">A secure Personal Money Management System built to track finances and investments.</span>` +
             `</div>` +
             
             // Subhams Secure Xerox Card
             `<div style="padding: 10px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">` +
-            `🖨️ <a href="https://subhams-agent-vpk.vercel.app/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: none; font-size: 15px;">Subhams Secure Xerox</a><br/>` +
+            `🖨️ <a href="https://agent.subhamsnetworks.in/" target="_blank" style="color: #2874f0; font-weight: bold; text-decoration: none; font-size: 15px;">Subhams Secure Xerox</a><br/>` +
             `<span style="color: #64748b; font-size: 12px; display: block; margin-top: 4px;">An automated, scalable document printing network and management system.</span>` +
             `</div>` +
 
