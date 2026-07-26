@@ -7,8 +7,8 @@ const { protect, adminOnly} = require('../middleware/authMiddleware');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 const { OAuth2Client } = require('google-auth-library');
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); 
+  
 // ================== 1. GET USER ==================
 router.get('/me', protect, async (req, res) => {
     try {

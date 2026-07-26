@@ -8,6 +8,10 @@ const cors = require('cors');
 const path = require('path');
 const cartRoutes = require('./routes/cartRoutes');
 const supportRoutes = require('./routes/supportRoutes'); 
+// Add this near your other route imports
+const registrationRoutes = require('./routes/registrationRoutes');
+
+
 
 dotenv.config();
 
@@ -36,7 +40,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/support', supportRoutes);
-
+// Add this where you define your app.use() routes
+app.use('/api', registrationRoutes);
 app.get('/', (req, res) => {
     res.send('Bhavyams VendorHub API is running smoothly on Render !!!');
 });
