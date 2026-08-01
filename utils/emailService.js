@@ -17,7 +17,7 @@ const emailHeader = `
 
 const emailFooter = `
     <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; border-top: 1px solid #e2e8f0; margin-top: 20px;">
-        <p style="color: #64748b; font-size: 12px; margin: 0;">System Engineered by A. Venkata Pavan Kumar</p>
+        <p style="color: #64748b; font-size: 12px; margin: 0;">System Engineered by  Venkata Pavan Kumar Amarthaluri</p>
         <p style="color: #94a3b8; font-size: 10px; margin-top: 5px;">&copy; 2026 Bhavyams VendorHub. All Rights Reserved.</p>
     </div>
 `;
