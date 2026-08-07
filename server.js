@@ -43,7 +43,7 @@ app.use('/api/support', supportRoutes);
 // Add this where you define your app.use() routes
 app.use('/api', registrationRoutes);
 app.get('/', (req, res) => {
-    res.send('Bhavyams VendorHub API is running smoothly on Render !!!');
+    res.send('subhams-hub VendorHub API is running smoothly on Render !!!');
 });
 
 app.get('/test-db', async (req, res) => {

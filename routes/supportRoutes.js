@@ -63,7 +63,7 @@ router.post('/chat', protect, async (req, res) => {
         }
         // --- RETURN ---
         else if (lowerMsg === "return / replace item" || lowerMsg.includes("return") || lowerMsg.includes("refund") || lowerMsg.includes("replace") || lowerMsg.includes("damage") || lowerMsg.includes("broken")) {
-            reply = `🛡️ **Bhavyams Assured Guarantee:**\n\nIf your item is damaged, defective, or incorrect, you can request a hassle-free return or replacement within **7 days** of delivery. \n\nYour refund of ₹${order.total_price} is fully secured by our system.`;
+            reply = `🛡️ **subhams-hub Assured Guarantee:**\n\nIf your item is damaged, defective, or incorrect, you can request a hassle-free return or replacement within **7 days** of delivery. \n\nYour refund of ₹${order.total_price} is fully secured by our system.`;
         }
         // --- DELAY ---
         else if (lowerMsg === "delivery is delayed" || lowerMsg.includes("delay") || lowerMsg.includes("late") || lowerMsg.includes("not received")) {

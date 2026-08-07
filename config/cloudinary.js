@@ -11,7 +11,7 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'bhavyams_products', // This folder will be created in your Cloudinary account
+    folder: 'subhams_products', // This folder will be created in your Cloudinary account
     allowed_formats: ['jpg', 'png', 'jpeg'],
   },
 });

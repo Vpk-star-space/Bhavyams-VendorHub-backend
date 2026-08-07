@@ -20,7 +20,7 @@ router.post('/register-interest', async (req, res) => {
 
         // 3. Prepare the email content for YOU
         const emailHtml = `
-            <h2>🚀 New Local Business Registration - Bhavyams Hub</h2>
+            <h2>🚀 New Local Business Registration - subhams-hub Hub</h2>
             <p><strong>Name:</strong> ${name}</p>
             <p><strong>Phone (WhatsApp):</strong> ${phone}</p>
             <p><strong>Business Name:</strong> ${businessName}</p>
@@ -33,9 +33,9 @@ router.post('/register-interest', async (req, res) => {
 
         // 4. Set up the Brevo API payload
         const emailData = {
-            sender: { name: "Bhavyams Hub System", email: SENDER_EMAIL },
+            sender: { name: "subhams-hub Hub System", email: SENDER_EMAIL },
             to: [{ email: "pavanvenkat63@gmail.com", name: "Venkata Pavan Kumar" }],
-            subject: "🔔 New Vendor Registration - Bhavyams",
+            subject: "🔔 New Vendor Registration - subhams-hub",
             htmlContent: emailHtml
         };
 
