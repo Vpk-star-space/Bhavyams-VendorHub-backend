@@ -9,7 +9,7 @@ const frontendUrl = process.env.FRONTEND_URL || 'https://hub.subhamsnetworks.in/
 const emailHeader = `
     <div style="background-color: #2874f0; padding: 25px; text-align: center; border-radius: 8px 8px 0 0;">
         <h1 style="color: #ffffff; margin: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-style: italic; font-size: 32px; letter-spacing: 1px;">
-            subhams-hub <span style="font-weight: 300;">Hub</span>
+            subhams <span style="font-weight: 300;">Hub</span>
         </h1>
         <p style="color: #e0e7ff; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;">Official Vendor Network</p>
     </div>
@@ -57,7 +57,7 @@ const sendOTPEmail = async (userEmail, otp, username = "Valued Customer") => {
 const sendOrderEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
     const { order_id, product_name, total_price, image_url } = orderDetails;
     const rawUrl = image_url || '';
-    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') ? rawUrl.replace(/["\\]/g, '') : `https://subhams-hub-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
+    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') ? rawUrl.replace(/["\\]/g, '') : `https://bhavyams-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
 
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
@@ -89,7 +89,7 @@ const sendOrderEmail = async (userEmail, orderDetails, username = "Valued Custom
 const sendDeliveryEmail = async (userEmail, orderDetails, username = "Valued Customer") => {
     const { order_id, product_name, image_url } = orderDetails;
     const rawUrl = image_url || '';
-    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') ? rawUrl.replace(/["\\]/g, '') : `https://subhams-hub-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
+    const cleanImg = rawUrl.replace(/["\\]/g, '').startsWith('http') ? rawUrl.replace(/["\\]/g, '') : `https://bhavyams-vendorhub-backend.onrender.com${rawUrl.replace(/["\\]/g, '')}`;
 
     const html = `
         <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; border: 1px solid #e2e8f0; border-radius: 10px;">
