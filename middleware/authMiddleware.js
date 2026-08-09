@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
-const pool = require('../db'); // 🛡️ Import your DB pool
+const pool = require('../db'); 
 
-const protect = async (req, res, next) => { // 🛡️ Added 'async'
+// 1. Authentication Middleware
+const protect = async (req, res, next) => {
     let token;
 
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
@@ -9,7 +10,6 @@ const protect = async (req, res, next) => { // 🛡️ Added 'async'
             token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            // 🛡️ FETCH FRESH DATA FROM DB (Including Role)
             const userRes = await pool.query(
                 'SELECT id, username, email, role FROM users WHERE id = $1', 
                 [decoded.id]
@@ -19,7 +19,7 @@ const protect = async (req, res, next) => { // 🛡️ Added 'async'
                 return res.status(401).json({ message: 'User no longer exists' });
             }
 
-            req.user = userRes.rows[0]; // Now req.user.role is definitely there!
+            req.user = userRes.rows[0]; 
             return next(); 
         } catch (error) {
             return res.status(401).json({ message: 'Not authorized, token failed' });
@@ -31,34 +31,31 @@ const protect = async (req, res, next) => { // 🛡️ Added 'async'
     }
 };
 
-// 👮 The Role Supervisor (Great for multiple roles)
+// 2. Safe Role Supervisor (Crash-proof if role is null/undefined)
 const authorize = (...roles) => {
     return (req, res, next) => {
-        // Ensure roles are compared in lowercase to avoid "Vendor" vs "vendor" bugs
-        if (!req.user || !roles.map(r => r.toLowerCase()).includes(req.user.role.toLowerCase())) {
+        const userRole = req.user?.role ? String(req.user.role).toLowerCase().trim() : '';
+        const allowedRoles = roles.map(r => String(r).toLowerCase().trim());
+
+        if (!req.user || !allowedRoles.includes(userRole)) {
             return res.status(403).json({ 
-                message: `Forbidden: Your role (${req.user?.role}) does not have permission.` 
+                message: `Forbidden: Your role (${req.user?.role || 'none'}) does not have permission.` 
             });
         }
         next();
     };
 };
 
-
-
-// ... (your protect function is above this)
-
 const adminOnly = (req, res, next) => {
-    console.log("DEBUG: Current User Role from DB is ->", `"${req.user?.role}"`);
-    
-    if (req.user && req.user.role && req.user.role.toLowerCase().trim() === 'admin') {
+    const userRole = req.user?.role ? String(req.user.role).toLowerCase().trim() : '';
+    const userEmail = req.user?.email ? String(req.user.email).toLowerCase().trim() : '';
+
+    // 🛡️ ULTRA-SECURE: Must be role 'admin' AND match your personal email
+    if (req.user && (userRole === 'admin' && userEmail === 'pavanvenkat63@gmail.com')) {
         next(); 
     } else {
-        res.status(403).json({ message: "Access Denied: Admins Only!" });
+        console.warn(`🚨 Unauthorized Admin Access Attempt by: ${userEmail || 'Unknown'}`);
+        res.status(403).json({ message: "Access Denied: Master Admin Only!" });
     }
 };
-// 🛡️ CRITICAL: You must export it here!
 module.exports = { protect, adminOnly, authorize };
-
-
-

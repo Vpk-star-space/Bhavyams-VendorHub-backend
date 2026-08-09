@@ -22,12 +22,16 @@
     "google-auth-library": "^10.6.2",
     "joi": "^18.1.2",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.1.1",
+    "multer": "^2.2.0",
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^8.0.4",
     "pg": "^8.20.0",
     "razorpay": "^2.9.6",
     "react-router-dom": "^7.13.2",
-    "react-toastify": "^11.0.5"
+    "react-toastify": "^11.0.5",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

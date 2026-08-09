@@ -6,12 +6,15 @@ if (!process.env.DATABASE_URL) {
   console.error("❌ DATABASE_URL is missing in ENV!");
 }
 
-// Create pool safely
+// Create pool safely with timeouts to prevent infinite hangs
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false,
   },
+  connectionTimeoutMillis: 5000, // Error out if connection takes > 5 seconds
+  idleTimeoutMillis: 30000,      // Close idle clients after 30 seconds
+  max: 10                        // Maximum concurrent connections in pool
 });
 
 // ✅ Successful connection log
@@ -19,12 +22,12 @@ pool.on('connect', () => {
   console.log('✅ Connected to Render Database!');
 });
 
-// ❌ Error handling (VERY IMPORTANT)
+// ❌ Error handling
 pool.on('error', (err) => {
   console.error('🔥 Unexpected DB Error:', err);
 });
 
-// 🧪 Optional: Test connection at startup
+// 🧪 Test connection at startup
 (async () => {
   try {
     await pool.query('SELECT NOW()');
