@@ -15,7 +15,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const supportRoutes = require('./routes/supportRoutes'); 
 const registrationRoutes = require('./routes/registrationRoutes');
 const shopRoutes = require('./routes/shopRoutes');
-
+const orderRoutes = require('./routes/orderRoutes');
 dotenv.config();
 
 const app = express();
@@ -47,7 +47,7 @@ app.use('/api', registrationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/shops', require('./routes/shopRoutes'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
+app.use('/api/orders', require('./routes/orderRoutes'));
 app.get('/', (req, res) => {
     res.send('Subhams-Hub API & Switchboard is running smoothly!');
 });
