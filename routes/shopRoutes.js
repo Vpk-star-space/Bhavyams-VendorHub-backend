@@ -4,11 +4,19 @@ const pool = require('../db');
 const { protect } = require('../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs'); // 🟢 1. Required to check and create folders
+
+// 🟢 2. AUTO-CREATE 'uploads' FOLDER IF MISSING (Fixes ENOENT crash permanently)
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log('📁 Created missing "uploads" directory automatically.');
+}
 
 // 🟢 BUILT-IN IMAGE UPLOADER CONFIGURATION
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, 'uploads/'); // Saves images to your backend /uploads folder
+        cb(null, 'uploads/'); // Safely saves images now that folder is guaranteed to exist
     },
     filename: function (req, file, cb) {
         cb(null, 'shop_' + Date.now() + path.extname(file.originalname));
@@ -53,7 +61,7 @@ router.get('/my-shop', protect, async (req, res) => {
 
         const productsQuery = await pool.query(
             'SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC',
-            [shop.id]
+            [shop.user_id] // 🟢 FIXED: Using user_id to match inventory items
         );
 
         res.json({
@@ -73,7 +81,6 @@ router.get('/my-shop', protect, async (req, res) => {
 // =====================================================================
 router.get('/active/all', async (req, res) => {
     try {
-        // 🟢 FIX: JOIN the users table to safely grab the address
         const shopsQuery = await pool.query(`
             SELECT v.id, v.business_name, v.category, v.shop_type, v.id_front_url, v.is_online, u.address
             FROM vendor_profiles v
@@ -113,13 +120,11 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ message: "Shop not found." });
         }
 
-       
-
-       const shop = shopQuery.rows[0];
+        const shop = shopQuery.rows[0];
 
         const productsQuery = await pool.query(
             'SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC',
-            [shop.user_id] // 🟢 FIXED: Now it searches using the correct User ID!
+            [shop.user_id] 
         );
 
         res.json({
@@ -140,7 +145,6 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
     const { business_name, category, shop_type, is_online } = req.body;
     const shopId = req.params.id;
     
-    // Check if a new file was uploaded
     let id_front_url = null;
     if (req.file) {
         id_front_url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
@@ -164,7 +168,6 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
 
         const updatedShop = updateQuery.rows[0];
 
-        // Broadcast real-time update
         const io = req.app.get('io');
         if (io) {
             io.emit('shop_updated', updatedShop);
