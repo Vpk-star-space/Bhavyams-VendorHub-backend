@@ -113,11 +113,13 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ message: "Shop not found." });
         }
 
-        const shop = shopQuery.rows[0];
+       
+
+       const shop = shopQuery.rows[0];
 
         const productsQuery = await pool.query(
             'SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC',
-            [shop.id]
+            [shop.user_id] // 🟢 FIXED: Now it searches using the correct User ID!
         );
 
         res.json({
