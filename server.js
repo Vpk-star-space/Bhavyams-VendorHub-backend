@@ -3,8 +3,8 @@ const dotenv = require('dotenv');
 const pool = require('./db');
 const cors = require('cors');
 const path = require('path');
-const http = require('http'); // 🟢 NEW: Required for Web Sockets
-const { Server } = require('socket.io'); // 🟢 NEW: The Switchboard
+const http = require('http'); 
+const { Server } = require('socket.io'); 
 
 // Route Imports
 const authRoutes = require('./routes/authRoutes');
@@ -19,7 +19,7 @@ const orderRoutes = require('./routes/orderRoutes');
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app); // 🟢 Wrap Express inside HTTP
+const server = http.createServer(app); 
 
 // 🚀 PRODUCTION FIX: Trust the Render Proxy
 app.set('trust proxy', 1);
@@ -48,6 +48,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/shops', require('./routes/shopRoutes'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/orders', require('./routes/orderRoutes'));
+
 app.get('/', (req, res) => {
     res.send('Subhams-Hub API & Switchboard is running smoothly!');
 });
@@ -58,6 +59,9 @@ app.get('/', (req, res) => {
 const io = new Server(server, {
     cors: { origin: '*', methods: ["GET", "POST"] }
 });
+
+// 🟢 THIS IS THE FIX: Attach 'io' to Express so orderRoutes.js can use it!
+app.set('io', io);
 
 // This map remembers which User ID belongs to which Live Socket ID
 const activeUsers = new Map(); 
@@ -104,7 +108,6 @@ io.on('connection', (socket) => {
 
     // 5. Cleanup when they close the app
     socket.on('disconnect', () => {
-        // Find and remove this user from the active map
         for (let [userId, socketId] of activeUsers.entries()) {
             if (socketId === socket.id) {
                 activeUsers.delete(userId);
@@ -121,7 +124,6 @@ app.use((err, req, res, next) => {
     res.status(500).json({ message: "Internal Server Error", error: err.message });
 });
 
-// 🟢 IMPORTANT: Notice we changed app.listen to server.listen!
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Subhams Server & Switchboard sprinting on port ${PORT}`);

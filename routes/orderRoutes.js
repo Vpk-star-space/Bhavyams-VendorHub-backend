@@ -130,4 +130,36 @@ router.get('/my-orders', protect, async (req, res) => {
     }
 });
 
+// =====================================================================
+// 📊 5. VENDOR: GET LIVE SALES & STATS
+// =====================================================================
+router.get('/my-sales', protect, async (req, res) => {
+    try {
+        // 1. Calculate Orders & Revenue (Only count money from 'Completed' orders)
+        const stats = await pool.query(`
+            SELECT 
+                COUNT(id) as total_orders,
+                SUM(total_amount) FILTER (WHERE status = 'Completed') as total_revenue
+            FROM orders 
+            WHERE vendor_id = $1
+        `, [req.user.id]);
+
+        // 2. Count Active Inventory Items
+        const products = await pool.query(`
+            SELECT COUNT(id) as total_products FROM products WHERE vendor_id = $1
+        `, [req.user.id]);
+
+        res.json({ 
+            success: true, 
+            revenue: stats.rows[0].total_revenue || 0,
+            orders: stats.rows[0].total_orders || 0,
+            products: products.rows[0].total_products || 0
+        });
+    } catch (err) {
+        console.error("Sales Stats Error:", err.message);
+        res.status(500).json({ success: false, message: "Failed to fetch stats." });
+    }
+});
+
+
 module.exports = router;
