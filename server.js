@@ -26,9 +26,7 @@ app.set('trust proxy', 1);
 
 // 📍 CORS CONFIGURATION
 app.use(cors({
-    origin: function(origin, callback) {
-        return callback(null, true);
-    },
+    origin: '*', // Allow all origins to prevent Render blocks
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     credentials: true
@@ -45,9 +43,9 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api', registrationRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/shops', require('./routes/shopRoutes'));
+app.use('/api/shops', shopRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/api/orders', require('./routes/orderRoutes'));
+app.use('/api/orders', orderRoutes);
 
 app.get('/', (req, res) => {
     res.send('Subhams-Hub API & Switchboard is running smoothly!');
@@ -56,11 +54,16 @@ app.get('/', (req, res) => {
 // =====================================================================
 // 📞 THE ZERO-TRUST WEBRTC SWITCHBOARD (Socket.io)
 // =====================================================================
+
+// 🟢 BULLETPROOF PRODUCTION SOCKET CONFIGURATION FOR RENDER
 const io = new Server(server, {
-    cors: { origin: '*', methods: ["GET", "POST"] }
+    cors: { origin: '*', methods: ["GET", "POST", "PUT", "DELETE"] },
+    transports: ['websocket', 'polling'], // Crucial for Render
+    pingTimeout: 60000, // Keeps connection alive on slow networks
+    pingInterval: 25000 // Prevents Render from closing idle connections
 });
 
-// 🟢 THIS IS THE FIX: Attach 'io' to Express so orderRoutes.js can use it!
+// Attach 'io' to Express so routes can use it!
 app.set('io', io);
 
 // This map remembers which User ID belongs to which Live Socket ID
@@ -78,13 +81,10 @@ io.on('connection', (socket) => {
     // 2. Customer clicks "Call Vendor"
     socket.on('initiate_call', async ({ callerId, receiverId, bookingId }) => {
         const receiverSocket = activeUsers.get(receiverId);
-        
         if (receiverSocket) {
-            // Ring the vendor's phone!
             io.to(receiverSocket).emit('incoming_call', { callerId, bookingId });
             console.log(`📞 Routing call from ${callerId} to ${receiverId}`);
         } else {
-            // Vendor is offline / app is closed
             socket.emit('call_failed', { reason: 'Vendor is currently offline.' });
         }
     });
@@ -93,7 +93,6 @@ io.on('connection', (socket) => {
     socket.on('answer_call', ({ callerId, signalData }) => {
         const callerSocket = activeUsers.get(callerId);
         if (callerSocket) {
-            // Send the secure WebRTC audio connection data back to the caller
             io.to(callerSocket).emit('call_answered', { signalData });
         }
     });

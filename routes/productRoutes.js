@@ -166,4 +166,31 @@ router.get('/detail/:itemId', async (req, res) => {
     }
 });
 
+
+// =====================================================================
+// 🗑️ DELETE A PRODUCT (Clears cart constraint automatically)
+// =====================================================================
+router.delete('/:id', protect, async (req, res) => {
+    try {
+        const productId = req.params.id;
+
+        // 1. Check if product exists
+        const productCheck = await pool.query('SELECT * FROM products WHERE id = $1', [productId]);
+        if (productCheck.rows.length === 0) {
+            return res.status(404).json({ message: "Product not found." });
+        }
+
+        // 2. 🟢 FIX: Delete any active cart items referencing this product first
+        await pool.query('DELETE FROM cart WHERE product_id = $1', [productId]);
+
+        // 3. Now safely delete the product
+        await pool.query('DELETE FROM products WHERE id = $1', [productId]);
+
+        console.log(`🗑️ Product ${productId} and its cart associations deleted successfully.`);
+        res.status(200).json({ message: "Product deleted successfully." });
+    } catch (err) {
+        console.error("❌ Delete Product Error:", err.message);
+        res.status(500).json({ message: "Server error while deleting product." });
+    }
+});
 module.exports = router;
