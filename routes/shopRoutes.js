@@ -139,15 +139,16 @@ router.get('/:id', async (req, res) => {
 });
 
 // =====================================================================
-// ✏️ 3. UPDATE SHOP PROFILE (Real-Time DB Sync & Profile Pic Upload)
+// ✏️ 3. UPDATE SHOP PROFILE (FIXED: Independent Shop Image Upload)
 // =====================================================================
 router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
     const { business_name, category, shop_type, is_online } = req.body;
     const shopId = req.params.id;
     
-    let id_front_url = null;
+    // 🟢 FIXED: Save to shop_image_url, NOT id_front_url!
+    let shop_image_url = null;
     if (req.file) {
-        id_front_url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        shop_image_url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     }
 
     try {
@@ -157,10 +158,10 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
                 category = COALESCE($2, category),
                 shop_type = COALESCE($3, shop_type),
                 is_online = COALESCE($4, is_online),
-                id_front_url = COALESCE($5, id_front_url)
+                shop_image = COALESCE($5, shop_image) -- 🟢 UPDATES ONLY THE PUBLIC IMAGE
             WHERE id = $6
             RETURNING *
-        `, [business_name, category, shop_type, is_online, id_front_url, shopId]);
+        `, [business_name, category, shop_type, is_online, shop_image_url, shopId]);
 
         if (updateQuery.rows.length === 0) {
             return res.status(404).json({ message: "Shop not found." });
@@ -169,9 +170,7 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
         const updatedShop = updateQuery.rows[0];
 
         const io = req.app.get('io');
-        if (io) {
-            io.emit('shop_updated', updatedShop);
-        }
+        if (io) io.emit('shop_updated', updatedShop);
 
         res.json({ message: "Shop updated successfully!", shop: updatedShop });
     } catch (err) {
@@ -179,5 +178,4 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
         res.status(500).json({ message: "Failed to update shop." });
     }
 });
-
 module.exports = router;

@@ -4,7 +4,6 @@ const pool = require('../db');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 // 🟢 HELPER FUNCTION FOR LIVE SYNC
-// This tells the frontend to update instantly without refreshing
 const triggerLiveSync = (req) => {
     const io = req.app.get('io');
     if (io) {
@@ -12,8 +11,41 @@ const triggerLiveSync = (req) => {
     }
 };
 
+// 🟢 AUTO-UNBLOCK ENGINE
+// Checks database and restores shops/users if their time has expired
+const autoUnblockSystem = async () => {
+    try {
+        const expired = await pool.query(`SELECT id FROM users WHERE account_status = 'temp_block' AND ban_until <= NOW()`);
+        for (let row of expired.rows) {
+            await pool.query('UPDATE vendor_profiles SET is_approved = true WHERE user_id = $1', [row.id]);
+            await pool.query('UPDATE users SET account_status = $1, ban_reason = NULL, ban_until = NULL WHERE id = $2', ['active', row.id]);
+        }
+    } catch (err) { console.error("Auto-Unblock Error:", err); }
+};
+
 // =====================================================================
-// 👑 1. ADMIN: GET ALL VENDORS (Includes Email & Address fix)
+// 🟢 SILENT SYNC ROUTE (Fixes the refresh/disappearing bug)
+// =====================================================================
+router.get('/my-security-status', protect, async (req, res) => {
+    try {
+        await autoUnblockSystem(); // Instantly unblock if time is up
+
+        const userQuery = await pool.query(
+            'SELECT account_status, ban_reason, ban_until FROM users WHERE id = $1', 
+            [req.user.id]
+        );
+        if (userQuery.rows.length > 0) {
+            res.json(userQuery.rows[0]);
+        } else {
+            res.status(404).json({ message: "User not found" });
+        }
+    } catch (err) {
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// =====================================================================
+// 👑 ADMIN: GET ALL VENDORS
 // =====================================================================
 router.get('/pending-vendors', protect, async (req, res) => {
     try {
@@ -25,13 +57,12 @@ router.get('/pending-vendors', protect, async (req, res) => {
         `);
         res.json(pending.rows);
     } catch (err) {
-        console.error("Fetch All Vendors Error:", err);
         res.status(500).json({ message: "Failed to load registrations." });
     }
 });
 
 // =====================================================================
-// ✅ 2. ADMIN: APPROVE SHOP
+// ✅ ADMIN: APPROVE SHOP
 // =====================================================================
 router.put('/approve-vendor/:id', protect, adminOnly, async (req, res) => {
     try {
@@ -41,7 +72,7 @@ router.put('/approve-vendor/:id', protect, adminOnly, async (req, res) => {
         await pool.query('UPDATE vendor_profiles SET is_approved = true WHERE id = $1', [req.params.id]);
         await pool.query("UPDATE users SET role = 'vendor' WHERE id = $1", [vendorCheck.rows[0].user_id]);
 
-        triggerLiveSync(req); // 🟢 LIVE SYNC
+        triggerLiveSync(req); 
         res.json({ message: "Shop approved successfully!" });
     } catch (err) {
         res.status(500).json({ message: "Failed to approve shop." });
@@ -49,31 +80,22 @@ router.put('/approve-vendor/:id', protect, adminOnly, async (req, res) => {
 });
 
 // =====================================================================
-// ✉️ 3. ADMIN: REQUEST CHANGES (SEND MESSAGE TO VENDOR)
+// ✉️ ADMIN: REQUEST CHANGES (SEND MESSAGE TO VENDOR)
 // =====================================================================
 router.put('/request-changes/:id', protect, async (req, res) => {
     try {
         const { reason } = req.body;
-        
-        // 🟢 BULLETPROOF FIX: Automatically create the column if it's missing so the server doesn't crash!
         await pool.query(`ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS status_note TEXT`);
-        
-        // Save the message and mark as unapproved
         await pool.query('UPDATE vendor_profiles SET is_approved = false, status_note = $1 WHERE id = $2', [reason, req.params.id]);
-
-        // 🟢 LIVE SYNC: Tell the socket to refresh the frontend
-        const io = req.app.get('io');
-        if (io) io.emit('admin_refresh');
-
+        triggerLiveSync(req);
         res.json({ message: "Message sent to vendor successfully." });
     } catch (err) {
-        console.error("Message Error:", err);
         res.status(500).json({ message: "Failed to send message." });
     }
 });
 
 // =====================================================================
-// ⏸️ 4. ADMIN: SUSPEND SHOP (Hide from App)
+// ⏸️ ADMIN: SUSPEND SHOP (Hide from App)
 // =====================================================================
 router.put('/suspend-vendor/:id', protect, adminOnly, async (req, res) => {
     try {
@@ -83,7 +105,7 @@ router.put('/suspend-vendor/:id', protect, adminOnly, async (req, res) => {
         await pool.query('UPDATE vendor_profiles SET is_approved = false WHERE id = $1', [req.params.id]);
         await pool.query("UPDATE users SET role = 'customer' WHERE id = $1", [vendorCheck.rows[0].user_id]);
 
-        triggerLiveSync(req); // 🟢 LIVE SYNC
+        triggerLiveSync(req); 
         res.json({ message: "Shop suspended successfully." });
     } catch (err) {
         res.status(500).json({ message: "Failed to suspend shop." });
@@ -91,7 +113,7 @@ router.put('/suspend-vendor/:id', protect, adminOnly, async (req, res) => {
 });
 
 // =====================================================================
-// 🗑️ 5. ADMIN: PERMANENTLY DELETE SHOP
+// 🗑️ ADMIN: PERMANENTLY DELETE SHOP
 // =====================================================================
 router.delete('/delete-vendor/:id', protect, adminOnly, async (req, res) => {
     try {
@@ -101,30 +123,10 @@ router.delete('/delete-vendor/:id', protect, adminOnly, async (req, res) => {
         await pool.query('DELETE FROM vendor_profiles WHERE id = $1', [req.params.id]);
         await pool.query("UPDATE users SET role = 'customer' WHERE id = $1", [vendorCheck.rows[0].user_id]);
 
-        triggerLiveSync(req); // 🟢 LIVE SYNC
+        triggerLiveSync(req); 
         res.json({ message: "Shop permanently deleted." });
     } catch (err) {
         res.status(500).json({ message: "Failed to delete shop." });
-    }
-});
-
-// =====================================================================
-// 💾 UPDATE PROFILE & SYNC DETAILS
-// =====================================================================
-router.put('/update-profile', protect, async (req, res) => {
-    const { username, phone, address, language } = req.body;
-    try {
-        const updateQuery = await pool.query(
-            `UPDATE users 
-             SET username = $1, phone = $2, address = $3, language = COALESCE($4, language) 
-             WHERE id = $5 
-             RETURNING id, username, email, phone, address, role, language`,
-            [username, phone, address, language, req.user.id]
-        );
-        if (updateQuery.rows.length === 0) return res.status(404).json({ message: "User not found." });
-        res.json({ message: "Profile and Language Synced!", user: updateQuery.rows[0] });
-    } catch (err) {
-        res.status(500).json({ message: "Server error during sync." });
     }
 });
 
@@ -141,31 +143,116 @@ router.post('/categories', async (req, res) => {
             `INSERT INTO app_categories (name, section, hd_image) VALUES ($1, $2, $3) RETURNING *`,
             [name, section, hd_image || '']
         );
-        
-        triggerLiveSync(req); // 🟢 LIVE SYNC
+        triggerLiveSync(req); 
         res.status(201).json(newCategory.rows[0]);
-    } catch (err) {
-        res.status(500).json({ message: "Server error" });
-    }
+    } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
 router.get('/categories', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM app_categories ORDER BY id ASC');
         res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ message: "Server error" });
-    }
+    } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
 router.delete('/categories/:id', protect, adminOnly, async (req, res) => {
     try {
         await pool.query('DELETE FROM app_categories WHERE id = $1', [req.params.id]);
-        
-        triggerLiveSync(req); // 🟢 LIVE SYNC
+        triggerLiveSync(req); 
         res.json({ message: "Category deleted successfully" });
+    } catch (err) { res.status(500).json({ message: "Server error" }); }
+});
+
+// =====================================================================
+// 🛡️ ADMIN: GET ALL USERS FOR SECURITY CENTER
+// =====================================================================
+router.get('/all-users', protect, adminOnly, async (req, res) => {
+    try {
+        await autoUnblockSystem(); // Clean up expired blocks before sending
+
+        const users = await pool.query(`
+            SELECT id, username, email, phone, role, account_status, ban_reason, ban_until, created_at 
+            FROM users ORDER BY created_at DESC
+        `);
+        res.json(users.rows);
     } catch (err) {
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: "Failed to load users." });
+    }
+});
+
+// =====================================================================
+// 🔨 ADMIN: APPLY SECURITY ACTION
+// =====================================================================
+router.put('/user-security/:id', protect, adminOnly, async (req, res) => {
+    try {
+        const { action, reason, minutes } = req.body; 
+        const userId = req.params.id;
+
+        let unblockTime = null;
+
+        if (action === 'unblock') {
+            await pool.query('UPDATE users SET account_status = $1, ban_reason = NULL, ban_until = NULL WHERE id = $2', ['active', userId]);
+            await pool.query('UPDATE vendor_profiles SET is_approved = true WHERE user_id = $1', [userId]);
+        } 
+        else if (action === 'warn') {
+            await pool.query('UPDATE users SET account_status = $1, ban_reason = $2 WHERE id = $3', ['warned', reason, userId]);
+        } 
+        else if (action === 'temp_block') {
+            const timeQuery = await pool.query(`
+                UPDATE users 
+                SET account_status = 'temp_block', ban_reason = $1, ban_until = NOW() + INTERVAL '${minutes} minutes' 
+                WHERE id = $2 RETURNING ban_until
+            `, [reason, userId]);
+            
+            unblockTime = timeQuery.rows[0].ban_until;
+            await pool.query('UPDATE vendor_profiles SET is_approved = false, is_online = false WHERE user_id = $1', [userId]);
+        }
+        else if (action === 'perma_banned') {
+            await pool.query('UPDATE users SET account_status = $1, ban_reason = $2, ban_until = NULL WHERE id = $3', ['perma_banned', reason, userId]);
+            await pool.query('UPDATE vendor_profiles SET is_approved = false, is_online = false WHERE user_id = $1', [userId]);
+        }
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('admin_refresh');
+            io.emit('force_logout', { userId, action, reason, ban_until: unblockTime }); 
+        }
+
+        res.json({ message: `User status updated to ${action}` });
+    } catch (err) {
+        res.status(500).json({ message: "Failed to update user security status." });
+    }
+});
+
+// =====================================================================
+// 💀 ADMIN: PERMANENTLY WIPE USER & CLEAN DB
+// =====================================================================
+router.delete('/delete-user/:id', protect, adminOnly, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const userId = req.params.id;
+        
+        await client.query('DELETE FROM cart WHERE user_id = $1', [userId]);
+        
+        const shopCheck = await client.query('SELECT id FROM vendor_profiles WHERE user_id = $1', [userId]);
+        if (shopCheck.rows.length > 0) {
+            const shopId = shopCheck.rows[0].id;
+            await client.query('DELETE FROM cart WHERE product_id IN (SELECT id FROM products WHERE vendor_id = $1)', [shopId]);
+            await client.query('DELETE FROM products WHERE vendor_id = $1', [shopId]);
+            await client.query('DELETE FROM vendor_profiles WHERE id = $1', [shopId]);
+        }
+        
+        await client.query('DELETE FROM users WHERE id = $1', [userId]);
+        await client.query('COMMIT'); 
+
+        triggerLiveSync(req);
+        res.json({ message: "User and all related data completely wiped safely." });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ message: "Failed to delete user." });
+    } finally {
+        client.release();
     }
 });
 
