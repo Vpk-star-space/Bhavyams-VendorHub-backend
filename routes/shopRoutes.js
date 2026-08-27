@@ -4,31 +4,28 @@ const pool = require('../db');
 const { protect } = require('../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs'); // 🟢 1. Required to check and create folders
+const fs = require('fs'); 
 
-// 🟢 2. AUTO-CREATE 'uploads' FOLDER IF MISSING (Fixes ENOENT crash permanently)
+// 🟢 AUTO-CREATE 'uploads' FOLDER
 const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
     console.log('📁 Created missing "uploads" directory automatically.');
 }
 
-// 🟢 BUILT-IN IMAGE UPLOADER CONFIGURATION
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/'); // Safely saves images now that folder is guaranteed to exist
-    },
-    filename: function (req, file, cb) {
-        cb(null, 'shop_' + Date.now() + path.extname(file.originalname));
-    }
+    destination: function (req, file, cb) { cb(null, 'uploads/'); },
+    filename: function (req, file, cb) { cb(null, 'public_logo_' + Date.now() + path.extname(file.originalname)); }
 });
 const upload = multer({ storage: storage });
 
-// 🟢 DATABASE AUTO-FIXER (Adds missing columns safely without crashing)
+// 🟢 DATABASE AUTO-FIXER: SEPARATING PUBLIC LOGO FROM SECURE EVIDENCE
 const fixDatabase = async () => {
     try {
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT true');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS shop_type VARCHAR(50) DEFAULT \'Products\'');
+        // 🟢 CRITICAL FIX: Adding a completely separate column for the public logo!
+        await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS shop_logo TEXT');
     } catch (err) {
         console.error("DB Fix Note:", err.message);
     }
@@ -36,119 +33,77 @@ const fixDatabase = async () => {
 fixDatabase();
 
 // =====================================================================
-// 🏪 1. GET MY SHOP & PRODUCTS (Must be FIRST before /:id)
+// 🏪 1. GET MY SHOP & PRODUCTS
 // =====================================================================
 router.get('/my-shop', protect, async (req, res) => {
     try {
-        if (!req.user || !req.user.id) {
-            return res.status(401).json({ message: "Unauthorized: Invalid or missing token." });
-        }
+        if (!req.user || !req.user.id) return res.status(401).json({ message: "Unauthorized." });
 
-        const shopQuery = await pool.query(
-            'SELECT * FROM vendor_profiles WHERE user_id = $1',
-            [req.user.id]
-        );
-
-        if (shopQuery.rows.length === 0) {
-            return res.json({ hasShop: false });
-        }
+        const shopQuery = await pool.query('SELECT * FROM vendor_profiles WHERE user_id = $1', [req.user.id]);
+        if (shopQuery.rows.length === 0) return res.json({ hasShop: false });
 
         const shop = shopQuery.rows[0];
+        if (!shop.is_approved) return res.json({ hasShop: true, shop: shop, products: [] });
 
-        if (!shop.is_approved) {
-            return res.json({ hasShop: true, shop: shop, products: [] });
-        }
-
-        const productsQuery = await pool.query(
-            'SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC',
-            [shop.user_id] // 🟢 FIXED: Using user_id to match inventory items
-        );
-
-        res.json({
-            hasShop: true,
-            shop: shop,
-            products: productsQuery.rows
-        });
-
+        const productsQuery = await pool.query('SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC', [shop.user_id]);
+        res.json({ hasShop: true, shop: shop, products: productsQuery.rows });
     } catch (err) {
-        console.error("❌ [my-shop] CRITICAL SERVER ERROR:", err.message);
         res.status(500).json({ message: "Server error: " + err.message });
     }
 });
 
 // =====================================================================
-// 🌍 PUBLIC: GET ALL ACTIVE SHOPS (For the Home Screen Tabs)
+// 🌍 PUBLIC: GET ALL ACTIVE SHOPS 
 // =====================================================================
 router.get('/active/all', async (req, res) => {
     try {
         const shopsQuery = await pool.query(`
-            SELECT v.id, v.business_name, v.category, v.shop_type, v.id_front_url, v.is_online, u.address
+            SELECT v.*, u.address
             FROM vendor_profiles v
             JOIN users u ON v.user_id = u.id
             WHERE v.is_approved = true
         `);
         res.json({ shops: shopsQuery.rows });
-    } catch (err) {
-        console.error("Fetch Active Shops Error:", err);
-        res.status(500).json({ message: "Server error" });
-    }
+    } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
 // =====================================================================
-// 🌍 2. PUBLIC: GET SHOP PROFILE & PRODUCTS BY ID
+// 🌍 2. PUBLIC: GET SHOP PROFILE BY ID
 // =====================================================================
 router.get('/:id', async (req, res) => {
     let shopId = req.params.id;
-    
     if (shopId === '42' || shopId === 'undefined' || shopId === 'null') {
         const defaultShop = await pool.query('SELECT id FROM vendor_profiles ORDER BY id ASC LIMIT 1');
-        if (defaultShop.rows.length > 0) {
-            shopId = defaultShop.rows[0].id;
-        }
+        if (defaultShop.rows.length > 0) { shopId = defaultShop.rows[0].id; }
     }
 
     try {
         const shopQuery = await pool.query(`
-            SELECT v.id, v.user_id, v.business_name, v.category, v.shop_type, v.is_online, v.is_approved, v.id_front_url, v.created_at,
-                   u.phone, u.address
+            SELECT v.*, u.phone, u.address, u.email as user_email, u.username as user_name
             FROM vendor_profiles v
             JOIN users u ON v.user_id = u.id
             WHERE v.id = $1
         `, [shopId]);
 
-        if (shopQuery.rows.length === 0) {
-            return res.status(404).json({ message: "Shop not found." });
-        }
-
+        if (shopQuery.rows.length === 0) return res.status(404).json({ message: "Shop not found." });
         const shop = shopQuery.rows[0];
 
-        const productsQuery = await pool.query(
-            'SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC',
-            [shop.user_id] 
-        );
-
-        res.json({
-            shop: shop,
-            products: productsQuery.rows
-        });
-
-    } catch (err) {
-        console.error("Fetch Public Shop Error:", err);
-        res.status(500).json({ message: "Failed to load shop profile." });
-    }
+        const productsQuery = await pool.query('SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC', [shop.user_id]);
+        res.json({ shop: shop, products: productsQuery.rows });
+    } catch (err) { res.status(500).json({ message: "Failed to load shop profile." }); }
 });
 
 // =====================================================================
-// ✏️ 3. UPDATE SHOP PROFILE (FIXED: Independent Shop Image Upload)
+// ✏️ 3. UPDATE SHOP PROFILE (STRICTLY UPDATES PUBLIC 'shop_logo')
 // =====================================================================
 router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
     const { business_name, category, shop_type, is_online } = req.body;
     const shopId = req.params.id;
     
-    // 🟢 FIXED: Save to shop_image_url, NOT id_front_url!
-    let shop_image_url = null;
+    // 🟢 ONLY updating the specific public column!
+    let shop_logo_url = null;
     if (req.file) {
-        shop_image_url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        shop_logo_url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     }
 
     try {
@@ -158,17 +113,14 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
                 category = COALESCE($2, category),
                 shop_type = COALESCE($3, shop_type),
                 is_online = COALESCE($4, is_online),
-                shop_image = COALESCE($5, shop_image) -- 🟢 UPDATES ONLY THE PUBLIC IMAGE
+                shop_logo = COALESCE($5, shop_logo) 
             WHERE id = $6
             RETURNING *
-        `, [business_name, category, shop_type, is_online, shop_image_url, shopId]);
+        `, [business_name, category, shop_type, is_online, shop_logo_url, shopId]);
 
-        if (updateQuery.rows.length === 0) {
-            return res.status(404).json({ message: "Shop not found." });
-        }
+        if (updateQuery.rows.length === 0) return res.status(404).json({ message: "Shop not found." });
 
         const updatedShop = updateQuery.rows[0];
-
         const io = req.app.get('io');
         if (io) io.emit('shop_updated', updatedShop);
 
@@ -178,4 +130,5 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
         res.status(500).json({ message: "Failed to update shop." });
     }
 });
+
 module.exports = router;
