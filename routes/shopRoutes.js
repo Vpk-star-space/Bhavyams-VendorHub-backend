@@ -2,29 +2,17 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { protect } = require('../middleware/authMiddleware');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs'); 
 
-// 🟢 AUTO-CREATE 'uploads' FOLDER
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-    console.log('📁 Created missing "uploads" directory automatically.');
-}
+// 🟢 1. IMPORT YOUR CLOUDINARY CONFIG
+// Adjust this path if your cloudinary file is saved somewhere else!
+const { upload, cloudinary } = require('../config/cloudinary'); 
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) { cb(null, 'uploads/'); },
-    filename: function (req, file, cb) { cb(null, 'public_logo_' + Date.now() + path.extname(file.originalname)); }
-});
-const upload = multer({ storage: storage });
-
-// 🟢 DATABASE AUTO-FIXER: SEPARATING PUBLIC LOGO FROM SECURE EVIDENCE
+// 🟢 2. DATABASE AUTO-FIXER
 const fixDatabase = async () => {
     try {
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT true');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS shop_type VARCHAR(50) DEFAULT \'Products\'');
-        // 🟢 CRITICAL FIX: Adding a completely separate column for the public logo!
+        // Ensures the public logo column exists safely
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS shop_logo TEXT');
     } catch (err) {
         console.error("DB Fix Note:", err.message);
@@ -94,19 +82,44 @@ router.get('/:id', async (req, res) => {
 });
 
 // =====================================================================
-// ✏️ 3. UPDATE SHOP PROFILE (STRICTLY UPDATES PUBLIC 'shop_logo')
+// ✏️ 3. UPDATE SHOP PROFILE (Cloudinary Upload & Auto-Cleanup)
 // =====================================================================
 router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
     const { business_name, category, shop_type, is_online } = req.body;
     const shopId = req.params.id;
     
-    // 🟢 ONLY updating the specific public column!
     let shop_logo_url = null;
-    if (req.file) {
-        shop_logo_url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-    }
 
     try {
+        // 🟢 IF A NEW FILE IS UPLOADED TO CLOUDINARY
+        if (req.file) {
+            shop_logo_url = req.file.path; // Cloudinary automatically provides the secure URL here!
+
+            // 🟢 AUTO-CLEANUP: Find the old image and delete it from Cloudinary so your storage doesn't get full!
+            const oldShop = await pool.query('SELECT shop_logo FROM vendor_profiles WHERE id = $1', [shopId]);
+            
+            if (oldShop.rows.length > 0 && oldShop.rows[0].shop_logo) {
+                const oldUrl = oldShop.rows[0].shop_logo;
+                
+                // Make sure it's actually a Cloudinary link before trying to delete
+                if (oldUrl.includes('cloudinary')) {
+                    try {
+                        // Extract the public_id from the Cloudinary URL
+                        const urlParts = oldUrl.split('/');
+                        const fileNameWithExt = urlParts[urlParts.length - 1]; // e.g. "image123.jpg"
+                        const folderName = urlParts[urlParts.length - 2];      // e.g. "subhams_hub_ids"
+                        const publicId = `${folderName}/${fileNameWithExt.split('.')[0]}`; // "subhams_hub_ids/image123"
+                        
+                        await cloudinary.uploader.destroy(publicId);
+                        console.log(`🗑️ Successfully deleted old Cloudinary image: ${publicId}`);
+                    } catch (delErr) {
+                        console.error("⚠️ Failed to delete old Cloudinary image:", delErr.message);
+                    }
+                }
+            }
+        }
+
+        // 🟢 UPDATE THE DATABASE
         const updateQuery = await pool.query(`
             UPDATE vendor_profiles 
             SET business_name = COALESCE($1, business_name),
@@ -121,6 +134,8 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
         if (updateQuery.rows.length === 0) return res.status(404).json({ message: "Shop not found." });
 
         const updatedShop = updateQuery.rows[0];
+        
+        // Push live update to frontend
         const io = req.app.get('io');
         if (io) io.emit('shop_updated', updatedShop);
 
