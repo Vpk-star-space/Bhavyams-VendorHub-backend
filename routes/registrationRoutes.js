@@ -33,7 +33,6 @@ router.post('/register-interest', protect, (req, res, next) => {
         return res.status(500).json({ message: "Server configuration error: Cloudinary keys are missing." });
     }
 
-    // 🟢 FIX: We now tell Multer to accept our new optional files!
     const uploadMiddleware = upload.fields([
         { name: 'idFront', maxCount: 1 }, 
         { name: 'idBack', maxCount: 1 },
@@ -56,7 +55,6 @@ router.post('/register-interest', protect, (req, res, next) => {
     try {
         console.log("⏱️ [Step 3] Processing text data & checking database...");
 
-        // 🟢 Get all the new smart fields from React
         const { name, phone, businessName, products, shop_type, work_mode, location, email } = req.body;
 
         // 🚨 SECURITY CHECK: If they typed bad words, block them immediately!
@@ -69,17 +67,25 @@ router.post('/register-interest', protect, (req, res, next) => {
             return res.status(400).json({ message: "Missing required text fields." });
         }
 
-        // 🟢 SAFELY EXTRACT FILES (Some might be missing if they work from home)
+        // 🟢 SMART UNIQUE SHOP NAME CHECKER (Prevents duplicates/fakes)
+        const nameCheck = await pool.query(
+            'SELECT id FROM vendor_profiles WHERE LOWER(TRIM(business_name)) = LOWER(TRIM($1))',
+            [businessName]
+        );
+        if (nameCheck.rows.length > 0) {
+            return res.status(400).json({ 
+                message: `Shop name '${businessName}' is already taken! To prevent customer confusion, please make it unique by adding your area or a number (e.g., '${businessName} ${location.split(',')[0]}' or '${businessName} 2.0').` 
+            });
+        }
+
+        // 🟢 SAFELY EXTRACT FILES
         if (!req.files || !req.files.idFront || !req.files.idBack) {
             return res.status(400).json({ message: "ID Front and Back files are required." });
         }
         
-
         const idFrontUrl = req.files.idFront[0].path;
         const idBackUrl = req.files.idBack[0].path;
-        // If shop photo exists, grab it. Otherwise, null.
         const shopPhotoUrl = req.files.shopPhoto ? req.files.shopPhoto[0].path : null;
-        // If certificate exists, grab it. Otherwise, null.
         const certificateUrl = req.files.certificate ? req.files.certificate[0].path : null;
 
         const existing = await pool.query('SELECT id FROM vendor_profiles WHERE user_id = $1', [req.user.id]);
@@ -90,15 +96,14 @@ router.post('/register-interest', protect, (req, res, next) => {
         console.log("⏱️ [Step 4] Inserting shop into database...");
         
         // 🟢 UPDATE DATABASE TO SAVE ALL THE NEW DATA
-     await pool.query(
-    `INSERT INTO vendor_profiles 
-    (user_id, business_name, category, shop_type, work_mode, location, email, id_front_url, id_back_url, shop_image, business_certificate, is_approved) 
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)`,
-    [req.user.id, businessName, products, shop_type, work_mode, location, email, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl]
-);
+        await pool.query(
+            `INSERT INTO vendor_profiles 
+            (user_id, business_name, category, shop_type, work_mode, location, email, id_front_url, id_back_url, shop_image, business_certificate, is_approved) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)`,
+            [req.user.id, businessName, products, shop_type, work_mode, location, email, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl]
+        );
         console.log("✅ [Step 4] Successfully saved shop to Database!");
         
-
         res.status(200).json({ message: "Registration successful! Admin is reviewing your details." });
 
         if (API_KEY && SENDER_EMAIL) {
@@ -129,7 +134,6 @@ router.post('/register-interest', protect, (req, res, next) => {
 // =====================================================================
 router.get('/my-shop', protect, async (req, res) => {
     try {
-        // 🟢 FIX: Ensure we explicitly select ALL columns, including status_note and location
         const shopQuery = await pool.query(
             'SELECT id, user_id, business_name, category, shop_type, work_mode, location, email, is_approved, status_note FROM vendor_profiles WHERE user_id = $1',
             [req.user.id]
@@ -142,7 +146,6 @@ router.get('/my-shop', protect, async (req, res) => {
         const shop = shopQuery.rows[0];
 
         if (!shop.is_approved) {
-            // Send the pending shop details (WITH THE ADMIN MESSAGE) back to the user
             return res.json({ hasShop: true, shop: shop, products: [] });
         }
 
@@ -197,30 +200,96 @@ router.put('/update-registration', protect, (req, res, next) => {
     });
 }, async (req, res) => {
     try {
-        const { businessName, products, shop_type, work_mode } = req.body;
+        const { businessName, products, shop_type, work_mode, location, email } = req.body;
         
         const existing = await pool.query('SELECT * FROM vendor_profiles WHERE user_id = $1', [req.user.id]);
         if (existing.rows.length === 0) return res.status(404).json({ message: "No application found to update." });
         
         const shop = existing.rows[0];
 
+        // 🟢 SMART UNIQUE SHOP NAME CHECKER (Make sure they don't change to a name someone else took)
+        const nameCheck = await pool.query(
+            'SELECT id FROM vendor_profiles WHERE LOWER(TRIM(business_name)) = LOWER(TRIM($1)) AND user_id != $2',
+            [businessName, req.user.id]
+        );
+        if (nameCheck.rows.length > 0) {
+            return res.status(400).json({ 
+                message: `Shop name '${businessName}' is already taken by another business! Please make it unique.` 
+            });
+        }
+
         // Keep the old images if the user didn't upload new ones
         const idFrontUrl = req.files.idFront ? req.files.idFront[0].path : shop.id_front_url;
         const idBackUrl = req.files.idBack ? req.files.idBack[0].path : shop.id_back_url;
         const shopPhotoUrl = req.files.shopPhoto ? req.files.shopPhoto[0].path : shop.shop_image;
         const certificateUrl = req.files.certificate ? req.files.certificate[0].path : shop.business_certificate;
-await pool.query(
-    `UPDATE vendor_profiles 
-     SET business_name = $1, category = $2, shop_type = $3, work_mode = $4, location = $5, email = $6,
-         id_front_url = $7, id_back_url = $8, shop_image = $9, business_certificate = $10 
-     WHERE user_id = $11`,
-    [businessName, products, shop_type, work_mode, location, email, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl, req.user.id]
-);
+
+        await pool.query(
+            `UPDATE vendor_profiles 
+             SET business_name = $1, category = $2, shop_type = $3, work_mode = $4, location = $5, email = $6,
+                 id_front_url = $7, id_back_url = $8, shop_image = $9, business_certificate = $10 
+             WHERE user_id = $11`,
+            [businessName, products, shop_type, work_mode, location, email, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl, req.user.id]
+        );
 
         res.status(200).json({ message: "Application updated successfully!" });
     } catch (error) {
         console.error("Update Error:", error.message);
         res.status(500).json({ message: "Database error during update." });
+    }
+});
+// =====================================================================
+// 🔍 ULTRA-OPTIMIZED SHOP NAME CHECKER (Real-time Validation)
+// =====================================================================
+router.get('/check-shop-name', protect, async (req, res) => {
+    try {
+        const { name, location } = req.query;
+        if (!name || name.trim().length < 3) {
+            return res.json({ available: true });
+        }
+
+        const cleanName = name.trim().toLowerCase();
+
+        // 1. EXACT MATCH CHECK (Instantly looks up via Database Index - No full scan)
+        const exactCheck = await pool.query(
+            'SELECT id FROM vendor_profiles WHERE LOWER(TRIM(business_name)) = $1 AND user_id != $2 LIMIT 1',
+            [cleanName, req.user.id] // Ignore their own current shop name if updating
+        );
+
+        if (exactCheck.rows.length === 0) {
+            return res.json({ available: true }); // Name is free!
+        }
+
+        // 2. IF TAKEN: SMART SUGGESTION GENERATOR (Like you asked!)
+        // It ONLY searches the DB for names starting with the same 3 letters (e.g. 'pav%') to be super fast!
+        const searchPrefix = cleanName.substring(0, 3) + '%';
+        const similarCheck = await pool.query(
+            "SELECT business_name FROM vendor_profiles WHERE LOWER(business_name) LIKE $1 LIMIT 10",
+            [searchPrefix]
+        );
+
+        // Put existing names into a list so we don't suggest a name that is already taken
+        const existingNames = similarCheck.rows.map(r => r.business_name.toLowerCase());
+        
+        const locPart = location && location !== 'Area' ? location.split(',')[0].trim() : 'Hub';
+        const randomNum = Math.floor(100 + Math.random() * 900);
+        
+        // Generate potential suggestions
+        let rawSuggestions = [
+            `${name.trim()} ${locPart}`,
+            `${name.trim()} Shop`,
+            `${name.trim()} 2.0`,
+            `${name.trim()} ${randomNum}`
+        ];
+
+        // Filter out any suggestions that are already in the database, keep the top 3
+        const safeSuggestions = rawSuggestions.filter(sug => !existingNames.includes(sug.toLowerCase())).slice(0, 3);
+
+        return res.json({ available: false, suggestions: safeSuggestions });
+
+    } catch (err) {
+        console.error("Name Check DB Error:", err.message);
+        res.status(500).json({ error: "Failed to check name." });
     }
 });
 
