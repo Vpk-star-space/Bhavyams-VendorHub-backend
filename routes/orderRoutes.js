@@ -3,15 +3,16 @@ const router = express.Router();
 const pool = require('../db');
 const { protect } = require('../middleware/authMiddleware');
 
-// 🟢 SAFE DATABASE CHECKER
-// Only creates the table if it's completely missing. Will NOT delete your orders!
+// =====================================================================
+// 🟢 SAFE DATABASE AUTO-FIXER
+// =====================================================================
 const verifyOrdersTable = async () => {
     try {
+        // 1. Create base table if missing
         await pool.query(`
             CREATE TABLE IF NOT EXISTS orders (
                 id SERIAL PRIMARY KEY,
                 customer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                vendor_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 items JSONB NOT NULL,
                 total_amount NUMERIC(10, 2) NOT NULL,
                 status VARCHAR(50) DEFAULT 'Pending',
@@ -22,7 +23,12 @@ const verifyOrdersTable = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
-        console.log("✅ Database verified: 'orders' table is ready and safe.");
+        
+        // 2. FORCE UPGRADE: Add missing relational columns to existing table
+        await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS vendor_id INTEGER');
+        await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS shop_id INTEGER');
+
+        console.log("✅ Database Auto-Fixer: 'orders' table is fully upgraded and ready.");
     } catch (err) {
         console.error("DB Verify Error:", err.message);
     }
@@ -34,7 +40,7 @@ verifyOrdersTable();
 // =====================================================================
 router.post('/place', protect, async (req, res) => {
     try {
-        const { vendor_id, items, total_amount, order_type, customer_name, customer_phone, customer_address } = req.body;
+        const { vendor_id, shop_id, items, total_amount, order_type, customer_name, customer_phone, customer_address } = req.body;
 
         if (!vendor_id) {
             return res.status(400).json({ success: false, message: "Vendor ID is missing." });
@@ -42,11 +48,12 @@ router.post('/place', protect, async (req, res) => {
 
         const newOrder = await pool.query(
             `INSERT INTO orders 
-            (customer_id, vendor_id, items, total_amount, order_type, customer_name, customer_phone, customer_address) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            (customer_id, vendor_id, shop_id, items, total_amount, order_type, customer_name, customer_phone, customer_address) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
             [
                 req.user.id, 
                 vendor_id, 
+                shop_id || null, // 🟢 Now safely capturing shop_id
                 JSON.stringify(items || []), 
                 total_amount || 0, 
                 order_type || 'Product', 
@@ -67,6 +74,7 @@ router.post('/place', protect, async (req, res) => {
         res.status(500).json({ success: false, message: "Failed to place order. " + err.message });
     }
 });
+
 // =====================================================================
 // 🏪 2. VENDOR: GET INCOMING ORDERS
 // =====================================================================
@@ -160,6 +168,5 @@ router.get('/my-sales', protect, async (req, res) => {
         res.status(500).json({ success: false, message: "Failed to fetch stats." });
     }
 });
-
 
 module.exports = router;

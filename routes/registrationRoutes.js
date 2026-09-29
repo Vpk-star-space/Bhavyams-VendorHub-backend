@@ -19,8 +19,19 @@ const ILLEGAL_WORDS = ['weapon', 'gun', 'drugs', 'fake', 'scam', 'illegal', 'mur
 const containsBadWords = (text) => {
     if (!text) return false;
     const lowerText = text.toLowerCase();
-    // Returns true if any illegal word is found in the text
     return ILLEGAL_WORDS.some(word => lowerText.includes(word));
+};
+
+// =====================================================================
+// 🛡️ BRAND PROTECTION: RESERVED WORDS SCANNER
+// =====================================================================
+// Removed 'bhavyams'. Added specific admin/brand identities.
+const RESERVED_WORDS = ['subhams', 'subhamsnetworks', 'subhamshub', 'admin', 'official', 'venkatapavankumar'];
+
+const isReservedBrandName = (text) => {
+    if (!text) return false;
+    const cleanText = text.replace(/\s+/g, '').toLowerCase(); // Removes all spaces so users can't trick it with "S u b h a m s"
+    return RESERVED_WORDS.some(word => cleanText.includes(word));
 };
 
 // =====================================================================
@@ -55,19 +66,26 @@ router.post('/register-interest', protect, (req, res, next) => {
     try {
         console.log("⏱️ [Step 3] Processing text data & checking database...");
 
-        const { name, phone, businessName, products, shop_type, work_mode, location, email } = req.body;
+        // 🟢 Added founder_name and ceo_name from request body
+        const { name, phone, businessName, products, shop_type, work_mode, location, email, founder_name, ceo_name } = req.body;
 
-        // 🚨 SECURITY CHECK: If they typed bad words, block them immediately!
+        // 🚨 SECURITY CHECK: Bad words
         if (containsBadWords(businessName) || containsBadWords(products)) {
             console.log("⚠️ SECURITY ALERT: Vendor tried to register illegal keywords.");
             return res.status(403).json({ message: "SECURITY ALERT: Illegal or prohibited words detected. Your registration is blocked." });
+        }
+
+        // 🛡️ BRAND SHIELD: Block fake Subhams Hub or Pavan accounts
+        if (isReservedBrandName(businessName) && req.user.email !== 'pavanvenkat63@gmail.com') {
+            console.log("⚠️ BRAND SECURITY ALERT: User attempted to register reserved brand name.");
+            return res.status(403).json({ message: "SECURITY ALERT: You cannot use official platform names (Subhams, Admin, or Founder names) in your shop name." });
         }
 
         if (!name || !phone || !businessName || !location) {
             return res.status(400).json({ message: "Missing required text fields." });
         }
 
-        // 🟢 SMART UNIQUE SHOP NAME CHECKER (Prevents duplicates/fakes)
+        // 🟢 SMART UNIQUE SHOP NAME CHECKER
         const nameCheck = await pool.query(
             'SELECT id FROM vendor_profiles WHERE LOWER(TRIM(business_name)) = LOWER(TRIM($1))',
             [businessName]
@@ -95,12 +113,12 @@ router.post('/register-interest', protect, (req, res, next) => {
 
         console.log("⏱️ [Step 4] Inserting shop into database...");
         
-        // 🟢 UPDATE DATABASE TO SAVE ALL THE NEW DATA
+        // 🟢 UPDATE DATABASE TO SAVE ALL THE NEW DATA (Including Founder/CEO)
         await pool.query(
             `INSERT INTO vendor_profiles 
-            (user_id, business_name, category, shop_type, work_mode, location, email, id_front_url, id_back_url, shop_image, business_certificate, is_approved) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)`,
-            [req.user.id, businessName, products, shop_type, work_mode, location, email, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl]
+            (user_id, business_name, category, shop_type, work_mode, location, email, founder_name, ceo_name, id_front_url, id_back_url, shop_image, business_certificate, is_approved) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false)`,
+            [req.user.id, businessName, products, shop_type, work_mode, location, email, founder_name, ceo_name, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl]
         );
         console.log("✅ [Step 4] Successfully saved shop to Database!");
         
@@ -135,7 +153,7 @@ router.post('/register-interest', protect, (req, res, next) => {
 router.get('/my-shop', protect, async (req, res) => {
     try {
         const shopQuery = await pool.query(
-            'SELECT id, user_id, business_name, category, shop_type, work_mode, location, email, is_approved, status_note FROM vendor_profiles WHERE user_id = $1',
+            'SELECT id, user_id, business_name, category, shop_type, work_mode, location, email, founder_name, ceo_name, is_approved, status_note FROM vendor_profiles WHERE user_id = $1',
             [req.user.id]
         );
 
@@ -200,14 +218,20 @@ router.put('/update-registration', protect, (req, res, next) => {
     });
 }, async (req, res) => {
     try {
-        const { businessName, products, shop_type, work_mode, location, email } = req.body;
+        // 🟢 Added founder_name and ceo_name
+        const { businessName, products, shop_type, work_mode, location, email, founder_name, ceo_name } = req.body;
         
+        // 🛡️ BRAND SHIELD: Prevent users from updating their name to a reserved one later
+        if (isReservedBrandName(businessName) && req.user.email !== 'pavanvenkat63@gmail.com') {
+            return res.status(403).json({ message: "SECURITY ALERT: You cannot use official platform names in your shop name." });
+        }
+
         const existing = await pool.query('SELECT * FROM vendor_profiles WHERE user_id = $1', [req.user.id]);
         if (existing.rows.length === 0) return res.status(404).json({ message: "No application found to update." });
         
         const shop = existing.rows[0];
 
-        // 🟢 SMART UNIQUE SHOP NAME CHECKER (Make sure they don't change to a name someone else took)
+        // 🟢 SMART UNIQUE SHOP NAME CHECKER
         const nameCheck = await pool.query(
             'SELECT id FROM vendor_profiles WHERE LOWER(TRIM(business_name)) = LOWER(TRIM($1)) AND user_id != $2',
             [businessName, req.user.id]
@@ -227,9 +251,9 @@ router.put('/update-registration', protect, (req, res, next) => {
         await pool.query(
             `UPDATE vendor_profiles 
              SET business_name = $1, category = $2, shop_type = $3, work_mode = $4, location = $5, email = $6,
-                 id_front_url = $7, id_back_url = $8, shop_image = $9, business_certificate = $10 
-             WHERE user_id = $11`,
-            [businessName, products, shop_type, work_mode, location, email, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl, req.user.id]
+                 founder_name = $7, ceo_name = $8, id_front_url = $9, id_back_url = $10, shop_image = $11, business_certificate = $12 
+             WHERE user_id = $13`,
+            [businessName, products, shop_type, work_mode, location, email, founder_name, ceo_name, idFrontUrl, idBackUrl, shopPhotoUrl, certificateUrl, req.user.id]
         );
 
         res.status(200).json({ message: "Application updated successfully!" });
@@ -238,6 +262,7 @@ router.put('/update-registration', protect, (req, res, next) => {
         res.status(500).json({ message: "Database error during update." });
     }
 });
+
 // =====================================================================
 // 🔍 ULTRA-OPTIMIZED SHOP NAME CHECKER (Real-time Validation)
 // =====================================================================

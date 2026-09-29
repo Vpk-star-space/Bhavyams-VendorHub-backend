@@ -21,6 +21,10 @@ const fixDatabase = async () => {
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS lng NUMERIC(10, 6)');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS delivery_areas TEXT DEFAULT \'All\'');
         
+        // 🟢 NEW: Founder and CEO Columns
+        await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS founder_name VARCHAR(255)');
+        await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS ceo_name VARCHAR(255)');
+
         // Ensure Verification Columns Exist
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT true');
@@ -278,8 +282,9 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// 🟢 UPGRADED TO ACCEPT FOUNDER AND CEO NAMES
 router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
-    const { business_name, category, shop_type, is_online, address, delivery_areas } = req.body;
+    const { business_name, category, shop_type, is_online, address, delivery_areas, founder_name, ceo_name } = req.body;
     const shopId = req.params.id;
     let shop_logo_url = null;
 
@@ -304,10 +309,12 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
                 is_online = COALESCE($4, is_online),
                 shop_logo = COALESCE($5, shop_logo),
                 address = COALESCE($6, address),
-                delivery_areas = COALESCE($7, delivery_areas)
-            WHERE id = $8
+                delivery_areas = COALESCE($7, delivery_areas),
+                founder_name = COALESCE($8, founder_name),
+                ceo_name = COALESCE($9, ceo_name)
+            WHERE id = $10
             RETURNING *
-        `, [business_name, category, shop_type, is_online, shop_logo_url, address, delivery_areas, shopId]);
+        `, [business_name, category, shop_type, is_online, shop_logo_url, address, delivery_areas, founder_name, ceo_name, shopId]);
 
         if (updateQuery.rows.length === 0) return res.status(404).json({ message: "Shop not found." });
 
@@ -319,11 +326,12 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
     } catch (err) { res.status(500).json({ message: "Failed to update shop." }); }
 });
 
-// 🟢 ADMIN: TOGGLE VENDOR VERIFICATION 
+// 🟢 STRICT ADMIN LOCK: TOGGLE VENDOR VERIFICATION 
 router.put('/admin/vendor/:shopId/verify-status', protect, async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.email === 'pavanvenkat63@gmail.com';
-        if (!isAdmin) {
+        // Only your exact email can verify shops
+        const isMasterAdmin = req.user.email === 'pavanvenkat63@gmail.com';
+        if (!isMasterAdmin) {
             return res.status(403).json({ message: "Access denied. Master Admin only." });
         }
 
