@@ -16,13 +16,14 @@ const fixDatabase = async () => {
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT true');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS shop_type VARCHAR(50) DEFAULT \'Products\'');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS shop_logo TEXT');
-        
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS address VARCHAR(255)');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS lat NUMERIC(10, 6)');
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS lng NUMERIC(10, 6)');
-        
-        // Delivery Settings
         await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS delivery_areas TEXT DEFAULT \'All\'');
+        
+        // Ensure Verification Columns Exist
+        await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false');
+        await pool.query('ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT true');
 
         // Staff Table
         await pool.query(`
@@ -53,9 +54,6 @@ const fixDatabase = async () => {
 };
 fixDatabase();
 
-// =====================================================================
-// 🔍 ULTRA-FAST SHOP NAME CHECKER (O(1) Exact Array Match)
-// =====================================================================
 router.get('/check-shop-name', protect, async (req, res) => {
     try {
         const { name, location } = req.query;
@@ -63,7 +61,6 @@ router.get('/check-shop-name', protect, async (req, res) => {
 
         const cleanName = name.trim();
 
-        // 1. Check if the exact name is taken
         const exactCheck = await pool.query(
             'SELECT id FROM vendor_profiles WHERE LOWER(TRIM(business_name)) = LOWER($1) AND user_id != $2 LIMIT 1',
             [cleanName, req.user.id]
@@ -71,7 +68,6 @@ router.get('/check-shop-name', protect, async (req, res) => {
 
         if (exactCheck.rows.length === 0) return res.json({ available: true }); 
 
-        // 2. IF TAKEN: Generate specific suggestions in memory
         const locPart = location && location !== 'Area' ? location.split(',')[0].trim() : 'Hub';
         const randomNum = Math.floor(100 + Math.random() * 900);
         
@@ -81,7 +77,6 @@ router.get('/check-shop-name', protect, async (req, res) => {
             `${cleanName} ${randomNum}`
         ];
 
-        // 3. FAST DB LOOKUP: Only check if these 3 exact strings exist using an array lookup
         const checkSugs = await pool.query(
             `SELECT business_name FROM vendor_profiles WHERE LOWER(business_name) = ANY($1::text[])`,
             [suggestions.map(s => s.toLowerCase())]
@@ -97,9 +92,6 @@ router.get('/check-shop-name', protect, async (req, res) => {
     }
 });
 
-// =====================================================================
-// 🏪 GET MY SHOP (Smart Auth: Checks Owner OR Staff Email)
-// =====================================================================
 router.get('/my-shop', protect, async (req, res) => {
     try {
         if (!req.user || !req.user.id) return res.status(401).json({ message: "Unauthorized." });
@@ -127,9 +119,6 @@ router.get('/my-shop', protect, async (req, res) => {
     }
 });
 
-// =====================================================================
-// 👥 MULTI-STAFF SECURE MANAGEMENT
-// =====================================================================
 router.get('/:id/staff', protect, async (req, res) => {
     try {
         const staffQuery = await pool.query('SELECT id, staff_email, role FROM shop_staff WHERE shop_id = $1', [req.params.id]);
@@ -192,9 +181,6 @@ router.delete('/:id/staff/:staffEmail', protect, async (req, res) => {
     } catch (err) { res.status(500).json({ message: "Failed to remove staff." }); }
 });
 
-// =====================================================================
-// 🚀 DELIVERY REQUEST ROUTES
-// =====================================================================
 router.post('/:id/request-delivery', protect, async (req, res) => {
     try {
         const { area_name } = req.body;
@@ -211,9 +197,6 @@ router.post('/:id/request-delivery', protect, async (req, res) => {
     }
 });
 
-// =====================================================================
-// 🌍 PUBLIC: GET ALL ACTIVE SHOPS 
-// =====================================================================
 router.get('/active/all', async (req, res) => {
     try {
         const shopsQuery = await pool.query(`
@@ -233,13 +216,15 @@ router.get('/active/all', async (req, res) => {
 });
 
 // =====================================================================
-// 🌍 PUBLIC: GET SHOP PROFILE BY ID
+// 🌍 PUBLIC: GET SHOP PROFILE BY ID (🟢 BULLETPROOF ERROR HANDLING)
 // =====================================================================
 router.get('/:id', async (req, res) => {
     let shopId = req.params.id;
     if (shopId === '42' || shopId === 'undefined' || shopId === 'null') {
-        const defaultShop = await pool.query('SELECT id FROM vendor_profiles ORDER BY id ASC LIMIT 1');
-        if (defaultShop.rows.length > 0) { shopId = defaultShop.rows[0].id; }
+        try {
+            const defaultShop = await pool.query('SELECT id FROM vendor_profiles ORDER BY id ASC LIMIT 1');
+            if (defaultShop.rows.length > 0) { shopId = defaultShop.rows[0].id; }
+        } catch(e) { return res.status(500).json({ message: "Database Error" }); }
     }
 
     try {
@@ -255,23 +240,44 @@ router.get('/:id', async (req, res) => {
         const shop = shopQuery.rows[0];
         shop.address = shop.address || shop.user_address || '';
 
-        const productsQuery = await pool.query('SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC', [shop.user_id]);
+        // 🟢 SAFELY FETCH PRODUCTS
+        let products = [];
+        try {
+            const productsQuery = await pool.query('SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC', [shop.user_id]);
+            products = productsQuery.rows;
+        } catch(err) { console.warn("Could not fetch products:", err.message); }
         
-        // 🟢 Fetch Delivery Demands (Grouped by area)
-        const requestsQuery = await pool.query(`
-            SELECT area_name as area, COUNT(*) as count 
-            FROM delivery_requests 
-            WHERE shop_id = $1 
-            GROUP BY area_name ORDER BY count DESC LIMIT 5
-        `, [shopId]);
+        // 🟢 SAFELY FETCH EXPO POSTS (Won't crash if table is missing)
+        let expoPosts = [];
+        try {
+            const expoQuery = await pool.query('SELECT * FROM expo_posts WHERE shop_id = $1 ORDER BY created_at DESC', [shopId]);
+            expoPosts = expoQuery.rows;
+        } catch(err) { console.warn("Could not fetch Expo posts:", err.message); }
 
-        res.json({ shop: shop, products: productsQuery.rows, delivery_requests: requestsQuery.rows });
-    } catch (err) { res.status(500).json({ message: "Failed to load shop profile." }); }
+        // 🟢 SAFELY FETCH DELIVERY REQUESTS
+        let deliveryRequests = [];
+        try {
+            const requestsQuery = await pool.query(`
+                SELECT area_name as area, COUNT(*) as count 
+                FROM delivery_requests 
+                WHERE shop_id = $1 
+                GROUP BY area_name ORDER BY count DESC LIMIT 5
+            `, [shopId]);
+            deliveryRequests = requestsQuery.rows;
+        } catch(err) { console.warn("Could not fetch Delivery Requests:", err.message); }
+
+        res.json({ 
+            shop: shop, 
+            products: products, 
+            delivery_requests: deliveryRequests,
+            expo_posts: expoPosts 
+        });
+    } catch (err) { 
+        console.error("CRITICAL SHOP FETCH ERROR:", err.message);
+        res.status(500).json({ message: "Failed to load shop profile.", error: err.message }); 
+    }
 });
 
-// =====================================================================
-// ✏️ UPDATE SHOP PROFILE
-// =====================================================================
 router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
     const { business_name, category, shop_type, is_online, address, delivery_areas } = req.body;
     const shopId = req.params.id;
@@ -311,6 +317,36 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
 
         res.json({ message: "Shop updated successfully!", shop: updatedShop });
     } catch (err) { res.status(500).json({ message: "Failed to update shop." }); }
+});
+
+// 🟢 ADMIN: TOGGLE VENDOR VERIFICATION 
+router.put('/admin/vendor/:shopId/verify-status', protect, async (req, res) => {
+    try {
+        const isAdmin = req.user.role === 'admin' || req.user.email === 'pavanvenkat63@gmail.com';
+        if (!isAdmin) {
+            return res.status(403).json({ message: "Access denied. Master Admin only." });
+        }
+
+        const { shopId } = req.params;
+        const { is_verified, is_approved } = req.body;
+
+        const updateRes = await pool.query(
+            `UPDATE vendor_profiles 
+             SET is_verified = COALESCE($1, is_verified),
+                 is_approved = COALESCE($2, is_approved)
+             WHERE id = $3 RETURNING id, business_name, is_verified, is_approved`,
+            [is_verified, is_approved, shopId]
+        );
+
+        if (updateRes.rows.length === 0) {
+            return res.status(404).json({ message: "Vendor profile not found." });
+        }
+
+        res.json({ message: "Vendor status updated successfully!", vendor: updateRes.rows[0] });
+    } catch (err) {
+        console.error("Admin verify status error:", err.message);
+        res.status(500).json({ message: "Server Error updating vendor status." });
+    }
 });
 
 module.exports = router;

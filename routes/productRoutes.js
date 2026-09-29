@@ -9,19 +9,18 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 // =====================================================================
 router.get('/feed', async (req, res) => {
     try {
-        // Customer's coordinates sent from the frontend (Defaults to 0 if not provided)
         const userLat = parseFloat(req.query.lat) || 0;
         const userLng = parseFloat(req.query.lng) || 0;
 
-        // 🧠 THE HAVERSINE FORMULA: Calculates exact distance in Kilometers!
+        // 🟢 FIXED: Now strictly uses v.lat and v.lng to match your database!
         const query = `
             SELECT 
                 p.*, 
                 v.business_name, 
                 v.animation_style, 
-                v.latitude as shop_lat, 
-                v.longitude as shop_lng,
-                (6371 * acos(cos(radians($1)) * cos(radians(v.latitude)) * cos(radians(v.longitude) - radians($2)) + sin(radians($1)) * sin(radians(v.latitude)))) AS distance_km
+                v.lat as shop_lat, 
+                v.lng as shop_lng,
+                (6371 * acos(cos(radians($1)) * cos(radians(v.lat)) * cos(radians(v.lng) - radians($2)) + sin(radians($1)) * sin(radians(v.lat)))) AS distance_km
             FROM products p 
             JOIN vendor_profiles v ON p.vendor_id = v.user_id 
             WHERE v.is_approved = true
@@ -32,7 +31,7 @@ router.get('/feed', async (req, res) => {
         const result = await pool.query(query, [userLat, userLng]);
         res.json({ products: result.rows });
     } catch (err) { 
-        console.error("Feed Error:", err);
+        console.error("Feed Error:", err.message);
         res.status(500).json({ error: "Failed to load local feed" }); 
     }
 });
