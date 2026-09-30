@@ -220,7 +220,7 @@ router.get('/active/all', async (req, res) => {
 });
 
 // =====================================================================
-// 🌍 PUBLIC: GET SHOP PROFILE BY ID (🟢 BULLETPROOF ERROR HANDLING)
+// 🌍 PUBLIC: GET SHOP PROFILE BY ID (🟢 FIXED: REAL-TIME FOLLOWER COUNT)
 // =====================================================================
 router.get('/:id', async (req, res) => {
     let shopId = req.params.id;
@@ -232,8 +232,15 @@ router.get('/:id', async (req, res) => {
     }
 
     try {
+        // 🟢 FIXED: This query explicitly counts exactly how many users follow this shop
         const shopQuery = await pool.query(`
-            SELECT v.*, u.phone, u.address AS user_address, u.email as user_email, u.username as user_name
+            SELECT 
+                v.*, 
+                u.phone, 
+                u.address AS user_address, 
+                u.email as user_email, 
+                u.username as user_name,
+                (SELECT COUNT(id) FROM shop_followers sf WHERE sf.following_shop_id = v.id) AS followers_count
             FROM vendor_profiles v
             JOIN users u ON v.user_id = u.id
             WHERE v.id = $1
@@ -244,21 +251,18 @@ router.get('/:id', async (req, res) => {
         const shop = shopQuery.rows[0];
         shop.address = shop.address || shop.user_address || '';
 
-        // 🟢 SAFELY FETCH PRODUCTS
         let products = [];
         try {
             const productsQuery = await pool.query('SELECT * FROM products WHERE vendor_id = $1 ORDER BY created_at DESC', [shop.user_id]);
             products = productsQuery.rows;
         } catch(err) { console.warn("Could not fetch products:", err.message); }
         
-        // 🟢 SAFELY FETCH EXPO POSTS (Won't crash if table is missing)
         let expoPosts = [];
         try {
             const expoQuery = await pool.query('SELECT * FROM expo_posts WHERE shop_id = $1 ORDER BY created_at DESC', [shopId]);
             expoPosts = expoQuery.rows;
         } catch(err) { console.warn("Could not fetch Expo posts:", err.message); }
 
-        // 🟢 SAFELY FETCH DELIVERY REQUESTS
         let deliveryRequests = [];
         try {
             const requestsQuery = await pool.query(`
@@ -282,7 +286,7 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// 🟢 UPGRADED TO ACCEPT FOUNDER AND CEO NAMES
+// 🟢 UPDATE SHOP PROFILE
 router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
     const { business_name, category, shop_type, is_online, address, delivery_areas, founder_name, ceo_name } = req.body;
     const shopId = req.params.id;
@@ -329,7 +333,6 @@ router.put('/:id', protect, upload.single('shop_logo'), async (req, res) => {
 // 🟢 STRICT ADMIN LOCK: TOGGLE VENDOR VERIFICATION 
 router.put('/admin/vendor/:shopId/verify-status', protect, async (req, res) => {
     try {
-        // Only your exact email can verify shops
         const isMasterAdmin = req.user.email === 'pavanvenkat63@gmail.com';
         if (!isMasterAdmin) {
             return res.status(403).json({ message: "Access denied. Master Admin only." });
@@ -354,6 +357,35 @@ router.put('/admin/vendor/:shopId/verify-status', protect, async (req, res) => {
     } catch (err) {
         console.error("Admin verify status error:", err.message);
         res.status(500).json({ message: "Server Error updating vendor status." });
+    }
+});
+
+// 🟢 GET SHOP FOLLOWERS (STRICT PRIVACY: ONLY OWNER & ADMIN, NO EMAILS)
+router.get('/:id/followers', protect, async (req, res) => {
+    try {
+        const shopCheck = await pool.query('SELECT user_id FROM vendor_profiles WHERE id = $1', [req.params.id]);
+        if (shopCheck.rows.length === 0) return res.status(404).json({ message: "Shop not found." });
+        
+        const isOwner = req.user.id === shopCheck.rows[0].user_id;
+        const isAdmin = req.user.role === 'admin' || req.user.email === 'pavanvenkat63@gmail.com';
+        
+        if (!isOwner && !isAdmin) {
+            return res.status(403).json({ message: "Not authorized to view followers." });
+        }
+
+        const followers = await pool.query(`
+            SELECT u.id, u.username, u.role, v.business_name, v.is_verified, v.id AS shop_id
+            FROM shop_followers sf
+            JOIN users u ON sf.follower_user_id = u.id
+            LEFT JOIN vendor_profiles v ON u.id = v.user_id
+            WHERE sf.following_shop_id = $1
+            ORDER BY sf.created_at DESC
+        `, [req.params.id]);
+
+        res.json({ followers: followers.rows });
+    } catch (err) {
+        console.error("Fetch Followers Error:", err);
+        res.status(500).json({ message: "Server error fetching followers." });
     }
 });
 
