@@ -79,7 +79,6 @@ router.post('/test', protect, async (req, res) => {
     }
 });
 
-// 🟢 REUSABLE FUNCTION: Call this from orders, chat, or admin warnings
 const sendPushToUser = async (userId, payload) => {
     try {
         const subs = await pool.query(
@@ -92,7 +91,7 @@ const sendPushToUser = async (userId, payload) => {
         const stringifiedPayload = JSON.stringify(payload);
         let deliveredCount = 0;
 
-    for (const sub of subs.rows) {
+        for (const sub of subs.rows) {
             const pushConfig = {
                 endpoint: sub.endpoint,
                 keys: {
@@ -101,23 +100,22 @@ const sendPushToUser = async (userId, payload) => {
                 }
             };
 
-            // 🟢 YOU MISSED THIS PART: Tell Android this is an urgent alarm!
+            // 🟢 Forces high priority for ALL notifications
             const options = {
                 urgency: 'high',
-                TTL: 60 * 60 // Keep alive for 1 hour
+                TTL: 60 * 60
             };
 
             try {
-                // 🟢 Notice we pass 'options' as the third thing here!
                 await webpush.sendNotification(pushConfig, stringifiedPayload, options);
                 deliveredCount++;
             } catch (error) {
-                // Remove expired/invalid endpoints
                 if (error.statusCode === 410 || error.statusCode === 404) {
                     await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]);
                 }
             }
         }
+
         return deliveredCount;
     } catch (err) {
         console.error("sendPushToUser error:", err);
