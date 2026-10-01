@@ -92,7 +92,7 @@ const sendPushToUser = async (userId, payload) => {
         const stringifiedPayload = JSON.stringify(payload);
         let deliveredCount = 0;
 
-        for (const sub of subs.rows) {
+    for (const sub of subs.rows) {
             const pushConfig = {
                 endpoint: sub.endpoint,
                 keys: {
@@ -101,17 +101,23 @@ const sendPushToUser = async (userId, payload) => {
                 }
             };
 
+            // 🟢 YOU MISSED THIS PART: Tell Android this is an urgent alarm!
+            const options = {
+                urgency: 'high',
+                TTL: 60 * 60 // Keep alive for 1 hour
+            };
+
             try {
-                await webpush.sendNotification(pushConfig, stringifiedPayload);
+                // 🟢 Notice we pass 'options' as the third thing here!
+                await webpush.sendNotification(pushConfig, stringifiedPayload, options);
                 deliveredCount++;
             } catch (error) {
-                // Remove expired/invalid endpoints (410 Gone or 404)
+                // Remove expired/invalid endpoints
                 if (error.statusCode === 410 || error.statusCode === 404) {
                     await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [sub.endpoint]);
                 }
             }
         }
-
         return deliveredCount;
     } catch (err) {
         console.error("sendPushToUser error:", err);
