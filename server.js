@@ -17,6 +17,8 @@ const registrationRoutes = require('./routes/registrationRoutes');
 const shopRoutes = require('./routes/shopRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const expoRoutes = require('./routes/expo');
+const chatRoutes = require('./routes/chatRoutes');
+const { router: notificationRoutes, sendPushToUser } = require('./routes/notificationRoutes');
 dotenv.config();
 
 const app = express();
@@ -48,7 +50,8 @@ app.use('/api/shops', shopRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/orders', orderRoutes);
 app.use('/api/expo', expoRoutes);
-
+app.use('/api/chats', chatRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.get('/', (req, res) => {
     res.send('Subhams-Hub API & Switchboard is running smoothly!');
 });
@@ -57,41 +60,102 @@ app.get('/', (req, res) => {
 // 📞 THE ZERO-TRUST WEBRTC SWITCHBOARD (Socket.io)
 // =====================================================================
 
-// 🟢 BULLETPROOF PRODUCTION SOCKET CONFIGURATION FOR RENDER
 const io = new Server(server, {
     cors: { origin: '*', methods: ["GET", "POST", "PUT", "DELETE"] },
-    transports: ['websocket', 'polling'], // Crucial for Render
-    pingTimeout: 60000, // Keeps connection alive on slow networks
-    pingInterval: 25000 // Prevents Render from closing idle connections
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000, 
+    pingInterval: 25000 
 });
 
-// Attach 'io' to Express so routes can use it!
 app.set('io', io);
 
-// This map remembers which User ID belongs to which Live Socket ID
 const activeUsers = new Map(); 
 
 io.on('connection', (socket) => {
     console.log(`🔌 New Device Connected: ${socket.id}`);
 
-    // 1. When a user opens the app, they register their ID with the switchboard
     socket.on('register_user', (userId) => {
         activeUsers.set(userId, socket.id);
-        console.log(`👤 User ${userId} is Online and ready to receive calls.`);
     });
 
-    // 2. Customer clicks "Call Vendor"
+    // =================================================================
+    // 💬 1. SECURE CHAT MESSAGING (Phase 1)
+    // =================================================================
+    socket.on('join_chat', (conversationId) => {
+        socket.join(`chat_${conversationId}`);
+        console.log(`User joined chat room: chat_${conversationId}`);
+    });
+
+    socket.on('leave_chat', (conversationId) => {
+        socket.leave(`chat_${conversationId}`);
+    });
+
+  socket.on('send_message', async (data) => {
+        const { conversation_id, sender_id, message_text } = data;
+        
+        try {
+            // Save to Database
+            const result = await pool.query(
+                'INSERT INTO chat_messages (conversation_id, sender_id, message_text) VALUES ($1, $2, $3) RETURNING *',
+                [conversation_id, sender_id, message_text]
+            );
+            
+            // Update last_message timestamp on conversation
+            await pool.query(
+                'UPDATE shop_conversations SET last_message = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                [message_text, conversation_id]
+            );
+
+            // Broadcast to the exact live room
+            io.to(`chat_${conversation_id}`).emit('receive_message', result.rows[0]);
+            
+            // 🟢 "GOD MODE": Send blind carbon copy to Admin Room
+            io.to('admin_supervision_room').emit('admin_chat_intercept', result.rows[0]);
+
+            // ==========================================
+            // 🟢 NEW: OFFLINE PUSH NOTIFICATION SYSTEM
+            // ==========================================
+            // Find out who is supposed to receive this message
+            const convoQuery = await pool.query('SELECT shop_id, customer_id FROM shop_conversations WHERE id = $1', [conversation_id]);
+            if (convoQuery.rows.length > 0) {
+                const convo = convoQuery.rows[0];
+                
+                // Get the Shop Owner's exact User ID
+                const shopQuery = await pool.query('SELECT user_id, business_name FROM vendor_profiles WHERE id = $1', [convo.shop_id]);
+                const shopOwnerId = shopQuery.rows[0].user_id;
+                const shopName = shopQuery.rows[0].business_name;
+
+                // If sender is customer, receiver is shop owner. If sender is shop owner, receiver is customer.
+                let receiverId = String(sender_id) === String(convo.customer_id) ? shopOwnerId : convo.customer_id;
+                
+                // Fetch sender's name for the popup
+                const senderQuery = await pool.query('SELECT username FROM users WHERE id = $1', [sender_id]);
+                const senderName = String(sender_id) === String(shopOwnerId) ? shopName : senderQuery.rows[0].username;
+
+                // Send Background Web Push to the Receiver's Phone!
+                await sendPushToUser(receiverId, {
+                    title: `New Message from ${senderName}`,
+                    body: message_text.length > 40 ? message_text.substring(0, 40) + '...' : message_text,
+                    url: `/chat/${conversation_id}`
+                });
+            }
+            
+        } catch (err) {
+            console.error("Socket Message Save Error:", err);
+        }
+    });
+    // =================================================================
+    // 📞 2. VOICE CALLING PROXY 
+    // =================================================================
     socket.on('initiate_call', async ({ callerId, receiverId, bookingId }) => {
         const receiverSocket = activeUsers.get(receiverId);
         if (receiverSocket) {
             io.to(receiverSocket).emit('incoming_call', { callerId, bookingId });
-            console.log(`📞 Routing call from ${callerId} to ${receiverId}`);
         } else {
             socket.emit('call_failed', { reason: 'Vendor is currently offline.' });
         }
     });
 
-    // 3. Vendor clicks "Answer"
     socket.on('answer_call', ({ callerId, signalData }) => {
         const callerSocket = activeUsers.get(callerId);
         if (callerSocket) {
@@ -99,7 +163,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 4. Hang up the phone
     socket.on('end_call', ({ remoteUserId }) => {
         const remoteSocket = activeUsers.get(remoteUserId);
         if (remoteSocket) {
@@ -107,12 +170,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. Cleanup when they close the app
     socket.on('disconnect', () => {
         for (let [userId, socketId] of activeUsers.entries()) {
             if (socketId === socket.id) {
                 activeUsers.delete(userId);
-                console.log(`👋 User ${userId} went Offline.`);
                 break;
             }
         }

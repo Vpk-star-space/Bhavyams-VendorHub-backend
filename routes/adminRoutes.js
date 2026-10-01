@@ -11,6 +11,20 @@ const triggerLiveSync = (req) => {
     }
 };
 
+// 🟢 DATABASE AUTO-FIXER: THE VIOLATION ENGINE
+// Injects granular security controls and strike tracking directly into the users table
+const fixAdminSecurityDatabase = async () => {
+    try {
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS strikes INT DEFAULT 0');
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_message BOOLEAN DEFAULT true');
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_call BOOLEAN DEFAULT true');
+        await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS can_book BOOLEAN DEFAULT true');
+    } catch (err) {
+        console.error("Admin DB Security Fix Note:", err.message);
+    }
+};
+fixAdminSecurityDatabase();
+
 // 🟢 AUTO-UNBLOCK ENGINE
 // Checks database and restores shops/users if their time has expired
 const autoUnblockSystem = async () => {
@@ -18,7 +32,8 @@ const autoUnblockSystem = async () => {
         const expired = await pool.query(`SELECT id FROM users WHERE account_status = 'temp_block' AND ban_until <= NOW()`);
         for (let row of expired.rows) {
             await pool.query('UPDATE vendor_profiles SET is_approved = true WHERE user_id = $1', [row.id]);
-            await pool.query('UPDATE users SET account_status = $1, ban_reason = NULL, ban_until = NULL WHERE id = $2', ['active', row.id]);
+            // Restores all features when unblocked
+            await pool.query('UPDATE users SET account_status = $1, ban_reason = NULL, ban_until = NULL, can_message = true, can_call = true, can_book = true WHERE id = $2', ['active', row.id]);
         }
     } catch (err) { console.error("Auto-Unblock Error:", err); }
 };
@@ -31,7 +46,7 @@ router.get('/my-security-status', protect, async (req, res) => {
         await autoUnblockSystem(); // Instantly unblock if time is up
 
         const userQuery = await pool.query(
-            'SELECT account_status, ban_reason, ban_until FROM users WHERE id = $1', 
+            'SELECT account_status, ban_reason, ban_until, strikes, can_message, can_call, can_book FROM users WHERE id = $1', 
             [req.user.id]
         );
         if (userQuery.rows.length > 0) {
@@ -170,8 +185,9 @@ router.get('/all-users', protect, adminOnly, async (req, res) => {
     try {
         await autoUnblockSystem(); // Clean up expired blocks before sending
 
+        // 🟢 FIXED: Now pulls strikes and granular permissions
         const users = await pool.query(`
-            SELECT id, username, email, phone, role, account_status, ban_reason, ban_until, created_at 
+            SELECT id, username, email, phone, role, account_status, ban_reason, ban_until, created_at, strikes, can_message, can_call, can_book 
             FROM users ORDER BY created_at DESC
         `);
         res.json(users.rows);
@@ -181,26 +197,50 @@ router.get('/all-users', protect, adminOnly, async (req, res) => {
 });
 
 // =====================================================================
-// 🔨 ADMIN: APPLY SECURITY ACTION
+// 🔨 ADMIN: APPLY SECURITY ACTION & VIOLATION ENGINE
 // =====================================================================
 router.put('/user-security/:id', protect, adminOnly, async (req, res) => {
     try {
-        const { action, reason, minutes } = req.body; 
+        const { action, reason, minutes, features } = req.body; 
         const userId = req.params.id;
 
         let unblockTime = null;
+        let responseMsg = `User status updated to ${action}`;
 
         if (action === 'unblock') {
-            await pool.query('UPDATE users SET account_status = $1, ban_reason = NULL, ban_until = NULL WHERE id = $2', ['active', userId]);
+            await pool.query('UPDATE users SET account_status = $1, ban_reason = NULL, ban_until = NULL, strikes = 0, can_message = true, can_call = true, can_book = true WHERE id = $2', ['active', userId]);
             await pool.query('UPDATE vendor_profiles SET is_approved = true WHERE user_id = $1', [userId]);
         } 
         else if (action === 'warn') {
             await pool.query('UPDATE users SET account_status = $1, ban_reason = $2 WHERE id = $3', ['warned', reason, userId]);
         } 
+        // 🟢 NEW: Add a Strike
+        else if (action === 'add_strike') {
+            const strikeQuery = await pool.query('UPDATE users SET strikes = strikes + 1, account_status = $1, ban_reason = $2 WHERE id = $3 RETURNING strikes', ['warned', reason, userId]);
+            const currentStrikes = strikeQuery.rows[0].strikes;
+            
+            responseMsg = `Strike ${currentStrikes} applied to user.`;
+
+            // Auto-Ban Rule: 3 Strikes = Perma Ban
+            if (currentStrikes >= 3) {
+                await pool.query('UPDATE users SET account_status = $1, ban_reason = $2, can_message = false, can_call = false, can_book = false WHERE id = $3', ['perma_banned', 'Auto-banned: Reached 3 Strikes', userId]);
+                await pool.query('UPDATE vendor_profiles SET is_approved = false, is_online = false WHERE user_id = $1', [userId]);
+                responseMsg = `User reached 3 strikes and was permanently banned.`;
+            }
+        }
+        // 🟢 NEW: Block Specific Features Only (e.g. Chat/Call Ban)
+        else if (action === 'toggle_features') {
+            const { can_message, can_call, can_book } = features;
+            await pool.query(
+                'UPDATE users SET can_message = COALESCE($1, can_message), can_call = COALESCE($2, can_call), can_book = COALESCE($3, can_book), ban_reason = $4 WHERE id = $5',
+                [can_message, can_call, can_book, reason, userId]
+            );
+            responseMsg = `Specific features updated for user.`;
+        }
         else if (action === 'temp_block') {
             const timeQuery = await pool.query(`
                 UPDATE users 
-                SET account_status = 'temp_block', ban_reason = $1, ban_until = NOW() + INTERVAL '${minutes} minutes' 
+                SET account_status = 'temp_block', ban_reason = $1, ban_until = NOW() + INTERVAL '${minutes} minutes', can_message = false, can_call = false, can_book = false 
                 WHERE id = $2 RETURNING ban_until
             `, [reason, userId]);
             
@@ -208,18 +248,20 @@ router.put('/user-security/:id', protect, adminOnly, async (req, res) => {
             await pool.query('UPDATE vendor_profiles SET is_approved = false, is_online = false WHERE user_id = $1', [userId]);
         }
         else if (action === 'perma_banned') {
-            await pool.query('UPDATE users SET account_status = $1, ban_reason = $2, ban_until = NULL WHERE id = $3', ['perma_banned', reason, userId]);
+            await pool.query('UPDATE users SET account_status = $1, ban_reason = $2, ban_until = NULL, can_message = false, can_call = false, can_book = false WHERE id = $3', ['perma_banned', reason, userId]);
             await pool.query('UPDATE vendor_profiles SET is_approved = false, is_online = false WHERE user_id = $1', [userId]);
         }
 
+        // Live Emit to knock the user offline or update their app instantly
         const io = req.app.get('io');
         if (io) {
             io.emit('admin_refresh');
-            io.emit('force_logout', { userId, action, reason, ban_until: unblockTime }); 
+            io.emit('force_logout', { userId, action, reason, ban_until: unblockTime, features }); 
         }
 
-        res.json({ message: `User status updated to ${action}` });
+        res.json({ message: responseMsg });
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: "Failed to update user security status." });
     }
 });
