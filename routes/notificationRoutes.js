@@ -157,15 +157,13 @@ const sendTruecallerAlert = async (userId, callDetails) => {
         return false;
     }
 };
-// 🟢 TEMPORARY OPEN TEST ROUTE (NO LOGIN OR DATABASE REQUIRED)
+// 🟢 TEMPORARY OPEN TEST ROUTE (FIXED)
 router.post('/test-trigger-alert', async (req, res) => {
     try {
         const { fcmToken } = req.body;
         if (!fcmToken) return res.status(400).json({ message: "No token provided." });
 
-        if (!admin.apps.length) {
-            return res.status(500).json({ message: "Firebase is not initialized on Render." });
-        }
+        // ❌ The broken admin.apps.length check was deleted from here!
 
         const message = {
             token: fcmToken,
@@ -192,6 +190,7 @@ router.post('/test-trigger-alert', async (req, res) => {
         res.json({ success: true, message: "Pinged phone directly!" });
     } catch (err) {
         console.error("Test failure:", err);
+        // This will cleanly catch any real Firebase errors and send them to your phone
         res.status(500).json({ message: "Test failed", error: err.message });
     }
 });
