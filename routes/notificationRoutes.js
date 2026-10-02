@@ -3,9 +3,31 @@ const router = express.Router();
 const webpush = require('web-push');
 const admin = require('firebase-admin');
 const pool = require('../db');
+const fs = require('fs');
+const path = require('path');
 const { protect } = require('../middleware/authMiddleware');
 
-// Setup WebPush VAPID
+// 🟢 1. BULLETPROOF FIREBASE INITIALIZATION
+if (!admin.apps || admin.apps.length === 0) {
+    try {
+        if (process.env.FIREBASE_CREDENTIALS) {
+            admin.initializeApp({
+                credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_CREDENTIALS))
+            });
+        } else {
+            const keyPath = path.join(__dirname, '../serviceAccountKey.json');
+            if (fs.existsSync(keyPath)) {
+                admin.initializeApp({
+                    credential: admin.credential.cert(require(keyPath))
+                });
+            }
+        }
+    } catch (e) {
+        console.error("Firebase Init Error:", e.message);
+    }
+}
+
+// 🟢 2. WEBPUSH INITIALIZATION
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     webpush.setVapidDetails(
         process.env.VAPID_EMAIL || 'mailto:pavanvenkat63@gmail.com',
@@ -14,7 +36,7 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     );
 }
 
-// Auto-create Tables
+// 🟢 3. DATABASE INITIALIZATION
 const initPushDB = async () => {
     try {
         await pool.query(`
@@ -27,7 +49,6 @@ const initPushDB = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fcm_tokens (
                 user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -35,64 +56,42 @@ const initPushDB = async () => {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-    } catch (err) {
-        console.error("Push DB Init Note:", err.message);
-    }
+    } catch (err) { console.error("Push DB Init Note:", err.message); }
 };
 initPushDB();
 
-// 1. GET PUBLIC VAPID KEY (Web users)
-router.get('/vapid-key', (req, res) => {
-    res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
-});
+// 🟢 4. STANDARD ROUTES
+router.get('/vapid-key', (req, res) => res.json({ publicKey: process.env.VAPID_PUBLIC_KEY }));
 
-// 2. SAVE WEB PUSH SUBSCRIPTION
 router.post('/subscribe', protect, async (req, res) => {
     try {
         const { endpoint, keys } = req.body;
-        const userId = req.user.id;
-
-        if (!endpoint || !keys?.p256dh || !keys?.auth) {
-            return res.status(400).json({ message: "Invalid subscription payload." });
-        }
+        if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ message: "Invalid payload." });
 
         await pool.query(`
-            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (endpoint) 
-            DO UPDATE SET user_id = $1, p256dh = $3, auth = $4
-        `, [userId, endpoint, keys.p256dh, keys.auth]);
+            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES ($1, $2, $3, $4)
+            ON CONFLICT (endpoint) DO UPDATE SET user_id = $1, p256dh = $3, auth = $4
+        `, [req.user.id, endpoint, keys.p256dh, keys.auth]);
 
-        res.json({ success: true, message: "Web push subscription saved." });
-    } catch (err) {
-        console.error("Web Push Subscription Error:", err);
-        res.status(500).json({ message: "Failed to register web subscription." });
-    }
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ message: "Failed." }); }
 });
 
-// 3. SAVE ANDROID NATIVE FCM TOKEN
 router.post('/register-fcm', protect, async (req, res) => {
     try {
         const { fcmToken } = req.body;
-        const userId = req.user.id;
-
         if (!fcmToken) return res.status(400).json({ message: "FCM token is required." });
 
         await pool.query(`
-            INSERT INTO fcm_tokens (user_id, token) 
-            VALUES ($1, $2)
-            ON CONFLICT (user_id) 
-            DO UPDATE SET token = $2, updated_at = CURRENT_TIMESTAMP
-        `, [userId, fcmToken]);
+            INSERT INTO fcm_tokens (user_id, token) VALUES ($1, $2)
+            ON CONFLICT (user_id) DO UPDATE SET token = $2, updated_at = CURRENT_TIMESTAMP
+        `, [req.user.id, fcmToken]);
 
-        res.json({ success: true, message: "Android FCM Token registered." });
-    } catch (err) {
-        console.error("FCM Token Error:", err);
-        res.status(500).json({ message: "Failed to register FCM token." });
-    }
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ message: "Failed." }); }
 });
 
-// Helper: Dispatch WebPush
+// 🟢 5. DISPATCH HELPERS
 const sendPushToUser = async (userId, payload) => {
     try {
         const subs = await pool.query('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1', [userId]);
@@ -102,11 +101,8 @@ const sendPushToUser = async (userId, payload) => {
         let deliveredCount = 0;
 
         for (const sub of subs.rows) {
-            const pushConfig = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
-            const options = { urgency: 'high', TTL: 60 * 60 };
-
             try {
-                await webpush.sendNotification(pushConfig, stringifiedPayload, options);
+                await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, stringifiedPayload, { urgency: 'high', TTL: 3600 });
                 deliveredCount++;
             } catch (error) {
                 if (error.statusCode === 410 || error.statusCode === 404) {
@@ -115,23 +111,18 @@ const sendPushToUser = async (userId, payload) => {
             }
         }
         return deliveredCount;
-    } catch (err) {
-        return 0;
-    }
+    } catch (err) { return 0; }
 };
 
-// Helper: Dispatch Android Truecaller-Style Alert
 const sendTruecallerAlert = async (userId, callDetails) => {
     try {
-        if (!admin.apps.length) return false;
+        if (!admin.apps || admin.apps.length === 0) return false;
 
         const result = await pool.query('SELECT token FROM fcm_tokens WHERE user_id = $1', [userId]);
         if (result.rows.length === 0) return false;
 
-        const fcmToken = result.rows[0].token;
-
         const message = {
-            token: fcmToken,
+            token: result.rows[0].token,
             android: {
                 priority: 'high',
                 notification: {
@@ -153,17 +144,18 @@ const sendTruecallerAlert = async (userId, callDetails) => {
 
         await admin.messaging().send(message);
         return true;
-    } catch (err) {
-        return false;
-    }
+    } catch (err) { return false; }
 };
-// 🟢 TEMPORARY OPEN TEST ROUTE (FIXED)
+
+// 🟢 6. GUARANTEED TEST ROUTE (No Database, No Auth)
 router.post('/test-trigger-alert', async (req, res) => {
     try {
         const { fcmToken } = req.body;
         if (!fcmToken) return res.status(400).json({ message: "No token provided." });
 
-        // ❌ The broken admin.apps.length check was deleted from here!
+        if (!admin.apps || admin.apps.length === 0) {
+            return res.status(500).json({ message: "Firebase is not initialized. Check Render environment variables." });
+        }
 
         const message = {
             token: fcmToken,
@@ -190,8 +182,8 @@ router.post('/test-trigger-alert', async (req, res) => {
         res.json({ success: true, message: "Pinged phone directly!" });
     } catch (err) {
         console.error("Test failure:", err);
-        // This will cleanly catch any real Firebase errors and send them to your phone
         res.status(500).json({ message: "Test failed", error: err.message });
     }
 });
+
 module.exports = { router, sendPushToUser, sendTruecallerAlert };
