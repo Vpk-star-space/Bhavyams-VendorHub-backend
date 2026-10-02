@@ -157,33 +157,42 @@ const sendTruecallerAlert = async (userId, callDetails) => {
         return false;
     }
 };
-
-// 🟢 TEMPORARY OPEN TEST ROUTES (NO LOGIN REQUIRED)
-router.post('/test-register-device', async (req, res) => {
-    try {
-        const { fcmToken } = req.body;
-        await pool.query(`
-            INSERT INTO fcm_tokens (user_id, token) 
-            VALUES (9999, $1)
-            ON CONFLICT (user_id) DO UPDATE SET token = $1, updated_at = CURRENT_TIMESTAMP
-        `, [fcmToken]);
-        res.json({ success: true, message: "Test device registered." });
-    } catch (err) {
-        res.status(500).json({ message: "Failed to register test device." });
-    }
-});
-
+// 🟢 TEMPORARY OPEN TEST ROUTE (NO LOGIN OR DATABASE REQUIRED)
 router.post('/test-trigger-alert', async (req, res) => {
     try {
-        const fcmDelivered = await sendTruecallerAlert(9999, {
-            callerName: "Testing Truecaller",
-            roomId: "test-123",
-            type: "voice_call"
-        });
-        res.json({ success: true, fcmDelivered });
+        const { fcmToken } = req.body;
+        if (!fcmToken) return res.status(400).json({ message: "No token provided." });
+
+        if (!admin.apps.length) {
+            return res.status(500).json({ message: "Firebase is not initialized on Render." });
+        }
+
+        const message = {
+            token: fcmToken,
+            android: {
+                priority: 'high',
+                notification: {
+                    channelId: 'subhams-urgent-alerts',
+                    title: "Subhams Hub Urgent Alert",
+                    body: "📞 Incoming order call... Tap to answer.",
+                    visibility: 'public',
+                    defaultVibrateTimings: true,
+                    defaultSound: true
+                }
+            },
+            data: {
+                action: 'INCOMING_CALL',
+                roomId: "test-123",
+                callerName: "System Test",
+                type: "voice_call"
+            }
+        };
+
+        await admin.messaging().send(message);
+        res.json({ success: true, message: "Pinged phone directly!" });
     } catch (err) {
-        res.status(500).json({ message: "Test failed." });
+        console.error("Test failure:", err);
+        res.status(500).json({ message: "Test failed", error: err.message });
     }
 });
-
 module.exports = { router, sendPushToUser, sendTruecallerAlert };
