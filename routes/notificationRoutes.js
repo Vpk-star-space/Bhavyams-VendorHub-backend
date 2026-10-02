@@ -76,9 +76,7 @@ router.post('/register-fcm', protect, async (req, res) => {
         const { fcmToken } = req.body;
         const userId = req.user.id;
 
-        if (!fcmToken) {
-            return res.status(400).json({ message: "FCM token is required." });
-        }
+        if (!fcmToken) return res.status(400).json({ message: "FCM token is required." });
 
         await pool.query(`
             INSERT INTO fcm_tokens (user_id, token) 
@@ -94,56 +92,17 @@ router.post('/register-fcm', protect, async (req, res) => {
     }
 });
 
-// 4. TEST BOTH WEB PUSH AND TRUECALLER ALERT
-router.post('/test', protect, async (req, res) => {
-    try {
-        const userId = req.user.id;
-
-        // Try Android Truecaller FCM alert first
-        const fcmDelivered = await sendTruecallerAlert(userId, {
-            callerName: "Subhams Hub",
-            roomId: "test-room",
-            type: "test"
-        });
-
-        // Try Web push
-        const webDelivered = await sendPushToUser(userId, {
-            title: "🔔 Subhams Hub Test Alert",
-            body: "Push notification alert connection is active!",
-            url: "/"
-        });
-
-        res.json({ 
-            success: true, 
-            delivered: (fcmDelivered ? 1 : 0) + webDelivered,
-            fcmDelivered,
-            webDelivered
-        });
-    } catch (err) {
-        console.error("Push Test Error:", err);
-        res.status(500).json({ message: "Failed to send test notification." });
-    }
-});
-
 // Helper: Dispatch WebPush
 const sendPushToUser = async (userId, payload) => {
     try {
-        const subs = await pool.query(
-            'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1',
-            [userId]
-        );
-
+        const subs = await pool.query('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1', [userId]);
         if (subs.rows.length === 0) return 0;
 
         const stringifiedPayload = JSON.stringify(payload);
         let deliveredCount = 0;
 
         for (const sub of subs.rows) {
-            const pushConfig = {
-                endpoint: sub.endpoint,
-                keys: { p256dh: sub.p256dh, auth: sub.auth }
-            };
-
+            const pushConfig = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
             const options = { urgency: 'high', TTL: 60 * 60 };
 
             try {
@@ -157,7 +116,6 @@ const sendPushToUser = async (userId, payload) => {
         }
         return deliveredCount;
     } catch (err) {
-        console.error("sendPushToUser error:", err);
         return 0;
     }
 };
@@ -165,10 +123,7 @@ const sendPushToUser = async (userId, payload) => {
 // Helper: Dispatch Android Truecaller-Style Alert
 const sendTruecallerAlert = async (userId, callDetails) => {
     try {
-        if (!admin.apps.length) {
-            console.warn("Firebase Admin is not initialized; skipping FCM alert.");
-            return false;
-        }
+        if (!admin.apps.length) return false;
 
         const result = await pool.query('SELECT token FROM fcm_tokens WHERE user_id = $1', [userId]);
         if (result.rows.length === 0) return false;
@@ -182,9 +137,7 @@ const sendTruecallerAlert = async (userId, callDetails) => {
                 notification: {
                     channelId: 'subhams-urgent-alerts',
                     title: callDetails.callerName || 'Subhams Hub Alert',
-                    body: callDetails.type === 'voice_call' 
-                        ? '📞 Incoming order call... Tap to answer.' 
-                        : '💬 New urgent message received.',
+                    body: callDetails.type === 'voice_call' ? '📞 Incoming order call... Tap to answer.' : '💬 New urgent message received.',
                     visibility: 'public',
                     defaultVibrateTimings: true,
                     defaultSound: true
@@ -201,16 +154,14 @@ const sendTruecallerAlert = async (userId, callDetails) => {
         await admin.messaging().send(message);
         return true;
     } catch (err) {
-        console.error("FCM Send Error:", err);
         return false;
     }
 };
 
-// 🟢 TEMPORARY TEST ROUTES (NO SIGN-IN REQUIRED)
+// 🟢 TEMPORARY OPEN TEST ROUTES (NO LOGIN REQUIRED)
 router.post('/test-register-device', async (req, res) => {
     try {
         const { fcmToken } = req.body;
-        // Save the token to a dummy test ID (9999)
         await pool.query(`
             INSERT INTO fcm_tokens (user_id, token) 
             VALUES (9999, $1)
@@ -224,7 +175,6 @@ router.post('/test-register-device', async (req, res) => {
 
 router.post('/test-trigger-alert', async (req, res) => {
     try {
-        // Trigger the alert for the dummy test ID (9999)
         const fcmDelivered = await sendTruecallerAlert(9999, {
             callerName: "Testing Truecaller",
             roomId: "test-123",
@@ -235,8 +185,5 @@ router.post('/test-trigger-alert', async (req, res) => {
         res.status(500).json({ message: "Test failed." });
     }
 });
-module.exports = {
-    router,
-    sendPushToUser,
-    sendTruecallerAlert
-};
+
+module.exports = { router, sendPushToUser, sendTruecallerAlert };
