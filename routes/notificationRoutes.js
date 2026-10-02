@@ -147,23 +147,31 @@ const sendTruecallerAlert = async (userId, callDetails) => {
     } catch (err) { return false; }
 };
 
-// 🟢 GUARANTEED TEST ROUTE (Bypasses Render Env Variables completely)
+// 🟢 GUARANTEED TEST ROUTE (Modern Firebase Modular Syntax)
 router.post('/test-trigger-alert', async (req, res) => {
     try {
         const { fcmToken } = req.body;
         if (!fcmToken) return res.status(400).json({ message: "No token provided." });
 
-        // FORCE FIREBASE INITIALIZATION WITH HARDCODED KEY
-        if (!admin.apps || admin.apps.length === 0) {
-            admin.initializeApp({
-                credential: admin.credential.cert({
-                    "project_id": "bhavyams-vendorhub",
-                    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDTgAgt4XGDmmgn\nhi0tQ2s7N00XYwrYpwzyPmT8+GmpiRzO+F1lzksPdBdW23admDMGwnz9G6Q1NpgN\njurNqo7YIZZRj4sGkeY0bWO6ToKmOtXvi8/WOQjZRZiWB7lU2xCeNz5f7OJYAmiD\nbexN1ri7iKpPWmYR+XRub1UIwPvW66zNGHsfP+FHfF8BsN2RbOIIg3TWYcNoEFyF\nFUQxsIgHJ0wC+n4sNFI1K/WdIsvfCb37ASE95yK5swUUmqVt2D2E5+eh1tkEBLKV\ngHWu6FfW3WGNBzNhTofPJG3SZ9V5HVpzu376veKMFpaOh45Zd4CDguNxY9Qyi0d5\nWxh5U6CzAgMBAAECggEAJdMBY3csjl0oYF0qKiyi+kGfG14em/VwJsiK1gT1HJlF\nWixnw6O7n8ViwSlZksCb64sPwFJXsR6U3ePf0S0+A6AqGmcB9YhVM64WhkSxL9pY\n1VDbOBQWJYlBSx+RgP/2fl0h3hTmu9eealbXymnqursrvipME83ZiUCG5BxjTaGf\n8P5K/h0PX7lUuaTAunms/aMW20N0Hn3I+ICSJD8GBo98Kq7cGJ3fBUE4oSEV1WLb\n3PFutBjiRZyIbpJu+Bq+crDje1Ae8Q16OoIA70b7fq414DvvwK84WxCnrcbcBIM8\nYS4m0D/rd41ZVmdh7nSc5WjS7iq8JGiokAZ3CDRn6QKBgQD3WnBWgwFDKh2N4LCs\nxkM3FWsiWkDyDgEvBLIigMrei8IyaQoc3mxvdAwbh8rdRaM8r3rtgGnfOLTJUxXx\nS/hcm7s1yZ+LALh943AZqFEHDaVmrHuhLOmiys1/yGwfLhS1K/NX9UITDN5drfAV\nbM3Z00MA5We8HJcPmXp4TvHeCQKBgQDa5L5mf71S4moF45TRWYVDY7YC3OG9jZvR\n1cGNPs/3iGbSEJs7zS+yuI6ayc8U0s7fOGJVj97HzSkhW4TSp+HESckftLAKykUR\neb0ycXdVNJnJnRF2msS8mlb6p38biK1vfDaK2k7Ed6IuM7IqvorNbMZLK6hYRsZ+\nFPP8xbD32wKBgQDZTIRAHBqxzH/mMixDvHE0JQbXSP6hJxh3G+L6WLbgR1s1Of3+\nWpBcYVB5pxPay+CZ4XdWymc4CPMZono2Xw0zHkSa/iPA08NAJNxITgvQ7HYP+xso\n/vHJZ+ycg5Ao3Cyo9JF1Bisj3TxEhBfUWp+E6wmD8gTtxxgWRjjHFGN7MQKBgDG+\n9n543V/u0MWR2QpS2/Ravsybwjm/6v+fIqOk+MJ6n1NyLrVChmqJgu8umf9TgWw9\ndiuXzLt/pq9MCz2MpcRkOG8aMz/ghB3amuLR4prcn26wYX2g4sEyGj5QvpRVVYUW\np5aa0nfX8GWrnfwU3Zqd89q1i0a0nvuca26wxu0tAoGAY5P+cn+Jo0QlseRsf94+\nl00Pfe8NspcBMdhfDn0Qm56uvjhvQ+8PjIXJKrLODJ3+9KVEUoZTBGyP/WzFFB/n\nWf+YKOcy24ktdDH3aTJOSoyVP5yjjAMQB5QsNqAA7V+zZE6+vtCvF2Z9P6Uvlhn/\nwwmWZcz9bmLQ668ej4xPDRI=\n-----END PRIVATE KEY-----\n",
-                    "client_email": "firebase-adminsdk-fbsvc@bhavyams-vendorhub.iam.gserviceaccount.com"
-                })
-            });
+        // 1. USE MODERN V12+ MODULAR FIREBASE IMPORTS
+        const { initializeApp, cert, getApps } = require('firebase-admin/app');
+        const { getMessaging } = require('firebase-admin/messaging');
+
+        const serviceAccount = {
+            "project_id": "bhavyams-vendorhub",
+            "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDTgAgt4XGDmmgn\nhi0tQ2s7N00XYwrYpwzyPmT8+GmpiRzO+F1lzksPdBdW23admDMGwnz9G6Q1NpgN\njurNqo7YIZZRj4sGkeY0bWO6ToKmOtXvi8/WOQjZRZiWB7lU2xCeNz5f7OJYAmiD\nbexN1ri7iKpPWmYR+XRub1UIwPvW66zNGHsfP+FHfF8BsN2RbOIIg3TWYcNoEFyF\nFUQxsIgHJ0wC+n4sNFI1K/WdIsvfCb37ASE95yK5swUUmqVt2D2E5+eh1tkEBLKV\ngHWu6FfW3WGNBzNhTofPJG3SZ9V5HVpzu376veKMFpaOh45Zd4CDguNxY9Qyi0d5\nWxh5U6CzAgMBAAECggEAJdMBY3csjl0oYF0qKiyi+kGfG14em/VwJsiK1gT1HJlF\nWixnw6O7n8ViwSlZksCb64sPwFJXsR6U3ePf0S0+A6AqGmcB9YhVM64WhkSxL9pY\n1VDbOBQWJYlBSx+RgP/2fl0h3hTmu9eealbXymnqursrvipME83ZiUCG5BxjTaGf\n8P5K/h0PX7lUuaTAunms/aMW20N0Hn3I+ICSJD8GBo98Kq7cGJ3fBUE4oSEV1WLb\n3PFutBjiRZyIbpJu+Bq+crDje1Ae8Q16OoIA70b7fq414DvvwK84WxCnrcbcBIM8\nYS4m0D/rd41ZVmdh7nSc5WjS7iq8JGiokAZ3CDRn6QKBgQD3WnBWgwFDKh2N4LCs\nxkM3FWsiWkDyDgEvBLIigMrei8IyaQoc3mxvdAwbh8rdRaM8r3rtgGnfOLTJUxXx\nS/hcm7s1yZ+LALh943AZqFEHDaVmrHuhLOmiys1/yGwfLhS1K/NX9UITDN5drfAV\nbM3Z00MA5We8HJcPmXp4TvHeCQKBgQDa5L5mf71S4moF45TRWYVDY7YC3OG9jZvR\n1cGNPs/3iGbSEJs7zS+yuI6ayc8U0s7fOGJVj97HzSkhW4TSp+HESckftLAKykUR\neb0ycXdVNJnJnRF2msS8mlb6p38biK1vfDaK2k7Ed6IuM7IqvorNbMZLK6hYRsZ+\nFPP8xbD32wKBgQDZTIRAHBqxzH/mMixDvHE0JQbXSP6hJxh3G+L6WLbgR1s1Of3+\nWpBcYVB5pxPay+CZ4XdWymc4CPMZono2Xw0zHkSa/iPA08NAJNxITgvQ7HYP+xso\n/vHJZ+ycg5Ao3Cyo9JF1Bisj3TxEhBfUWp+E6wmD8gTtxxgWRjjHFGN7MQKBgDG+\n9n543V/u0MWR2QpS2/Ravsybwjm/6v+fIqOk+MJ6n1NyLrVChmqJgu8umf9TgWw9\ndiuXzLt/pq9MCz2MpcRkOG8aMz/ghB3amuLR4prcn26wYX2g4sEyGj5QvpRVVYUW\np5aa0nfX8GWrnfwU3Zqd89q1i0a0nvuca26wxu0tAoGAY5P+cn+Jo0QlseRsf94+\nl00Pfe8NspcBMdhfDn0Qm56uvjhvQ+8PjIXJKrLODJ3+9KVEUoZTBGyP/WzFFB/n\nWf+YKOcy24ktdDH3aTJOSoyVP5yjjAMQB5QsNqAA7V+zZE6+vtCvF2Z9P6Uvlhn/\nwwmWZcz9bmLQ668ej4xPDRI=\n-----END PRIVATE KEY-----\n",
+            "client_email": "firebase-adminsdk-fbsvc@bhavyams-vendorhub.iam.gserviceaccount.com"
+        };
+
+        // 2. INIT FIREBASE IF NOT ALREADY DONE
+        let app;
+        if (getApps().length === 0) {
+            app = initializeApp({ credential: cert(serviceAccount) });
+        } else {
+            app = getApps()[0];
         }
 
+        // 3. SEND THE TRUECALLER ALERT
         const message = {
             token: fcmToken,
             android: {
@@ -185,12 +193,11 @@ router.post('/test-trigger-alert', async (req, res) => {
             }
         };
 
-        await admin.messaging().send(message);
+        await getMessaging(app).send(message);
         res.json({ success: true, message: "Pinged phone directly!" });
     } catch (err) {
         console.error("Test failure:", err);
         res.status(500).json({ message: "Test failed", error: err.message });
     }
 });
-
 module.exports = { router, sendPushToUser, sendTruecallerAlert };
