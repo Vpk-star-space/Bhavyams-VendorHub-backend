@@ -206,6 +206,35 @@ const sendTruecallerAlert = async (userId, callDetails) => {
     }
 };
 
+// 🟢 TEMPORARY TEST ROUTES (NO SIGN-IN REQUIRED)
+router.post('/test-register-device', async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        // Save the token to a dummy test ID (9999)
+        await pool.query(`
+            INSERT INTO fcm_tokens (user_id, token) 
+            VALUES (9999, $1)
+            ON CONFLICT (user_id) DO UPDATE SET token = $1, updated_at = CURRENT_TIMESTAMP
+        `, [fcmToken]);
+        res.json({ success: true, message: "Test device registered." });
+    } catch (err) {
+        res.status(500).json({ message: "Failed to register test device." });
+    }
+});
+
+router.post('/test-trigger-alert', async (req, res) => {
+    try {
+        // Trigger the alert for the dummy test ID (9999)
+        const fcmDelivered = await sendTruecallerAlert(9999, {
+            callerName: "Testing Truecaller",
+            roomId: "test-123",
+            type: "voice_call"
+        });
+        res.json({ success: true, fcmDelivered });
+    } catch (err) {
+        res.status(500).json({ message: "Test failed." });
+    }
+});
 module.exports = {
     router,
     sendPushToUser,
